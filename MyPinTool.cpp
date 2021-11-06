@@ -4,6 +4,15 @@
 #include <stdlib.h>
 #include <string>
 
+using namespace std;
+
+typedef struct mem_regions_t {
+	int id;
+	int high;
+	int low;
+	string name;
+}mem_regions;
+
 typedef struct _MEMORY_BASIC_INFORMATION {
 	void*  BaseAddress;
 	void*  AllocationBase;
@@ -15,30 +24,36 @@ typedef struct _MEMORY_BASIC_INFORMATION {
 	int  Type;
 } MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
 
-using std::endl;
-using std::ofstream;
-using std::string;
 KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
+
 ofstream TraceFile;
-std::string s1 = "VirtualQueryEx";
-std::string s2 = "VirtualQuery";
-int* prova;
+int* p2Buff;
+int img_counter = 0;
+mem_regions mem_array[50];
 
 //function to parse VirtualQueryEx arguments
 VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) { 
-	TraceFile << name << " ProcesHandle: (" << arg0 << ")" << " lpAddress: (" << arg1 << ")" << " lpBuffer: (" << arg2 << ")" << " dwLength: (" << arg3 << ")" << endl;
+	//TraceFile << name << " ProcesHandle: (" << arg0 << ")" << " lpAddress: (" << arg1 << ")" << " lpBuffer: (" << arg2 << ")" << " dwLength: (" << arg3 << ")" << endl;
 }
 //function to parse virtual query arguments
 VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of type MEMORY_BASIC_INFORMATION
 	int* lpbuffer =(int*) arg1;
-	prova = lpbuffer;
-	TraceFile << name << " lpAddress: (" << arg0 << ")" << " lpBuffer: (" << arg1 << ")" << " dwLength: (" << arg2 << ")" << endl;
+	p2Buff = lpbuffer;
+	//TraceFile << name << " lpAddress: (" << arg0 << ")" << " lpBuffer: (" << arg1 << ")" << " dwLength: (" << arg2 << ")" << endl;
 }
 //function to retrive VirtualQuery return value	
-VOID VQAfter(ADDRINT ret){
-MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) prova;
-	TraceFile << "  returns " << ret << endl;
-	TraceFile << "base address of the pages " << result->BaseAddress;
+VOID VQAfter(ADDRINT ret, IMG img){
+MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) p2Buff;
+	for (int i = 0; i < 50; i++) {
+		TraceFile << "\n spotted an address contained in a module";
+		TraceFile << "The module is: " << mem_array[i].name;
+		TraceFile << "\n max address of the pages is: " << mem_array[i].high;
+		TraceFile << "\n base address of the pages is: " << mem_array[i].low;
+		TraceFile << "\n the id of the image is: " << mem_array[i].id;
+		//if(i=1){ //((int)result->AllocationBase >= mem_array[i].low && (int) result->AllocationBase < mem_array[i].high){
+
+		//	}
+	}
 }
 
 //function to format information about VirtualQuery
@@ -66,18 +81,19 @@ VOID instrumentVQ(IMG img, VOID *v) {
 			IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_FUNCARG_ENTRYPOINT_VALUE, 1, IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
 			IARG_END);
 		//function to retrive VirtualQuery return value	
-		RTN_InsertCall(rtn1, IPOINT_AFTER, (AFUNPTR)VQAfter,
+		RTN_InsertCall(rtn1, IPOINT_AFTER, (AFUNPTR)VQAfter,// IARG_ADDRINT, img,
 			IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
 		RTN_Close(rtn1);
 	}
-	if (RTN_Valid(rtn2)) {
+	/*if (RTN_Valid(rtn2)) {// does not work properly need to reconfigure for VQEx using function for VQ
+		TraceFile << "images which contain VirtualQueryEx are: " << IMG_Name(img) << "\n";
 		RTN_Open(rtn2);
 		//function to format information about VirtualQuery
 		/*RTN_InsertCall(rtn2, IPOINT_AFTER, (AFUNPTR)alertprint(img, rtn2),
 			IARG_FUNCRET_EXITPOINT_VALUE,
 			IARG_END);*/
 			//function to parse VirtualQueryEx arguments
-		RTN_InsertCall(rtn2, IPOINT_BEFORE, (AFUNPTR)ArgVQEx,
+		/*RTN_InsertCall(rtn2, IPOINT_BEFORE, (AFUNPTR)ArgVQEx,
 			IARG_ADDRINT, "VirtualQueryEx",
 			IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_FUNCARG_ENTRYPOINT_VALUE, 1, IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
 			IARG_END);
@@ -85,20 +101,17 @@ VOID instrumentVQ(IMG img, VOID *v) {
 		RTN_InsertCall(rtn2, IPOINT_AFTER, (AFUNPTR)VQAfter,
 			IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
 		RTN_Close(rtn2);
-	}
+	}*/
 }
 
 VOID parse_funcsyms(IMG img, VOID *v) {
 	if (!IMG_Valid(img)) return;
-	for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
-		for (RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
-		std:string name = RTN_Name(rtn);
-			if (!name.compare(s1) || !name.compare(s2)) {
-				TraceFile << "Image " << IMG_Name(img) << " contains: \n";
-				TraceFile << "\t Rtn name: " << name << "\n";
-			}
-		}
-	}
+	mem_array[img_counter].id = IMG_Id(img);
+	mem_array[img_counter].high = IMG_HighAddress(img);
+	mem_array[img_counter].low = IMG_LowAddress(img);
+	mem_array[img_counter].name = IMG_Name(img);
+	img_counter++;
+	instrumentVQ(img, 0);
 }
 
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
@@ -140,7 +153,7 @@ int main(int argc, char* argv[])
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
 	// Parse function names
-	IMG_AddInstrumentFunction(instrumentVQ, 0);
+	IMG_AddInstrumentFunction(parse_funcsyms, 0);
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	// Start the program, never returns
