@@ -5,6 +5,11 @@ VisualStudioVersion = 15.0.28307.1705
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MyPinTool", "MyPinTool.vcxproj", "{639EF517-FCFC-408E-9500-71F0DC0458DB}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{453FB8ED-D688-40A3-A596-C888DE2BF0B8}"
+	ProjectSection(SolutionItems) = preProject
+		Locals.props = Locals.props
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -26,6 +31,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {B07D7617-94CE-4281-96B3-546610B849D4}
+		SolutionGuid = {61CE28CD-67C0-457B-9F9D-8736F22DFD54}
 	EndGlobalSection
 EndGlobal

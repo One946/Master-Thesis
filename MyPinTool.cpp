@@ -3,6 +3,12 @@
 #include <fstream>
 #include <stdlib.h>
 #include <string>
+
+namespace W {
+#define _WINDOWS_H_PATH_ C:/Program Files/Windows Kits/10/Include/10.0.17763.0/um
+#include <Windows.h>
+}
+
 using namespace std;
 
 typedef struct mem_regions_t {
@@ -30,7 +36,8 @@ typedef struct _MEMORY_BASIC_INFORMATION {
 
 KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
 ofstream TraceFile;
-int* p2Buff;
+int* p2BuffVQ;
+int* p2BuffVQEx;
 int img_counter = 0;
 mem_regions mem_array[50]; //array in which i store valuable informations about the images
 mem_map op_map;
@@ -39,21 +46,24 @@ mem_map op_map;
 VOID RecordMemR(VOID * ip, VOID * addr){
 	for (int i = 0; i < 50; i++) {
 		if ((int)addr >= mem_array[i].low && (int)addr < mem_array[i].high) {
+			TraceFile << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
 			TraceFile << "\n spotted an address contained in a known memory region belonging to a module";
 			TraceFile << "\n The module is: " << mem_array[i].name <<" and the sample tried to access this addres with a ReadOP";
 			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
 			TraceFile << "\n the address of interest is: " << (int)addr;
 			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
 		}
-		}
+	}
 }
 //function to record a write if falls within known mem_region
 VOID RecordMemW(VOID * ip, VOID * addr){
 	for (int i = 0; i < 50; i++) {
 		if((int)addr >= mem_array[i].low && (int)addr < mem_array[i].high){
+			TraceFile << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
 			TraceFile << "\n spotted an address contained in a known memory region belonging to a module";
 			TraceFile << "\nThe module is: " << mem_array[i].name<< " and the sample tried to access this addres with a WriteOP";
 			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
+			TraceFile << "\n the address of interest is: " << (int)addr;
 			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
 		}
 	}
@@ -65,7 +75,7 @@ VOID ValidateMemory(INS ins, VOID *v) {
 	for (UINT32 memOp = 0; memOp < mem_operands; memOp++){
 		if (INS_MemoryOperandIsRead(ins, memOp))
 		{
-			INS_InsertPredicatedCall(
+			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemR,
 				IARG_INST_PTR,
 				IARG_MEMORYOP_EA, memOp,
@@ -73,7 +83,7 @@ VOID ValidateMemory(INS ins, VOID *v) {
 		}
 		if (INS_MemoryOperandIsWritten(ins, memOp))
 		{
-			INS_InsertPredicatedCall(
+			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemW,
 				IARG_INST_PTR,
 				IARG_MEMORYOP_EA, memOp,
@@ -84,16 +94,18 @@ VOID ValidateMemory(INS ins, VOID *v) {
 //function to parse VirtualQueryEx arguments
 VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) { 
 	//TraceFile << name << " ProcesHandle: (" << arg0 << ")" << " lpAddress: (" << arg1 << ")" << " lpBuffer: (" << arg2 << ")" << " dwLength: (" << arg3 << ")" << endl;
+	int* lpbuffer = (int*)arg2;
+	p2BuffVQEx = lpbuffer;
 }
 //function to parse virtual query arguments
 VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of type MEMORY_BASIC_INFORMATION
 	int* lpbuffer =(int*) arg1;
-	p2Buff = lpbuffer;
+	p2BuffVQ = lpbuffer;
 	//TraceFile << name << " lpAddress: (" << arg0 << ")" << " lpBuffer: (" << arg1 << ")" << " dwLength: (" << arg2 << ")" << endl;
 }
 //function to retrive VirtualQuery return value	
 VOID VQAfter(ADDRINT ret, IMG img){
-MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) p2Buff;
+MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) p2BuffVQ;
 	for (int i = 0; i < 50; i++) {
 		if((int)result->AllocationBase >= mem_array[i].low && (int) result->AllocationBase < mem_array[i].high){
 			TraceFile << "\n spotted an address contained in a module";
@@ -105,7 +117,7 @@ MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) p2Buff;
 	}
 }
 VOID VQExAfter(ADDRINT ret) {
-	MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *)p2Buff;
+	MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
 	for (int i = 0; i < 50; i++) {
 		if((int)result->AllocationBase >= mem_array[i].low && (int) result->AllocationBase < mem_array[i].high){
 			TraceFile << "\n spotted an address contained in a module VIRTUALQUERYEX";
