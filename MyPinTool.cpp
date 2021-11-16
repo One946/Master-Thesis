@@ -3,26 +3,41 @@
 #include <fstream>
 #include <stdlib.h>
 #include <string>
-
+/*mem array begin
+#define MEM_READABLE			0x1
+#define MEM_WRITEABLE			0x2
+#define MEM_EXECUTABLE			0x4
+#define MEM_ACCESSIBLE			0x8
+#define MEM_IS_READABLE(x)		((x) & (MEM_READABLE | MEM_ACCESSIBLE))
+#define MEM_IS_WRITEABLE(x)		((x) & (MEM_WRITEABLE | MEM_ACCESSIBLE))
+#define MEM_IS_EXECUTABLE(x)	((x) & (MEM_EXECUTABLE| MEM_ACCESSIBLE))
+#define MEM_GET_PAGE(addr)		((addr) >> OS_PAGE_OFFSET_BITS)
+#define MAXADDR 0xffffffff
+#define OS_PAGE_SIZE			4096
+#define OS_PAGE_OFFSET_BITS		12
+#define OS_NUM_PAGES			(1 << (32 - OS_PAGE_OFFSET_BITS))
+#define OS_CLEAR_MASK			0xFFFFF000
+#define OS_ALLOCATION_SIZE		65536
+//mem array end*/
 namespace W {
 #define _WINDOWS_H_PATH_ C:/Program Files/Windows Kits/10/Include/10.0.17763.0/um
 #include <Windows.h>
 }
-
 using namespace std;
 
+//*******************************************************************
+//TYPE DEF
+//*******************************************************************
 typedef struct mem_regions_t {
 	int id;
 	int high;
 	int low;
 	string name;
 }mem_regions;
-
 typedef struct mem_map_t {
-	int address;
-	bool op; //  1 for write 0 for read
+	VOID * address;
+	char op;
 }mem_map;
-
 typedef struct _MEMORY_BASIC_INFORMATION {
 	void*  BaseAddress;
 	void*  AllocationBase;
@@ -34,55 +49,55 @@ typedef struct _MEMORY_BASIC_INFORMATION {
 	int  Type;
 } MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
 
+//*******************************************************************
+//GLOBAL VARIABLES
+//*******************************************************************
 KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
 ofstream TraceFile;
 int* p2BuffVQ;
 int* p2BuffVQEx;
 int img_counter = 0;
-mem_regions mem_array[50]; //array in which i store valuable informations about the images
-mem_map op_map;
-
+mem_regions mem_array[100]; //array in which i store valuable informations about the images
+mem_map op_map[1000];
+int counter = 0;
+//*******************************************************************
+//FUNCTION DEFINITIONS
+//*******************************************************************
 //function to record a write if falls within known mem_region
 VOID RecordMemR(VOID * ip, VOID * addr){
-	for (int i = 0; i < 50; i++) {
-		if ((int)addr >= mem_array[i].low && (int)addr < mem_array[i].high) {
-			TraceFile << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
-			TraceFile << "\n spotted an address contained in a known memory region belonging to a module";
-			TraceFile << "\n The module is: " << mem_array[i].name <<" and the sample tried to access this addres with a ReadOP";
-			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
-			TraceFile << "\n the address of interest is: " << (int)addr;
-			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
-		}
+	counter++;
+	if (counter < 100) {
+		op_map[counter].address = addr;
+		op_map[counter].op = 'R';
+		TraceFile<< op_map[counter].op << " "<< op_map[counter].address << "\n";
 	}
 }
 //function to record a write if falls within known mem_region
 VOID RecordMemW(VOID * ip, VOID * addr){
-	for (int i = 0; i < 50; i++) {
-		if((int)addr >= mem_array[i].low && (int)addr < mem_array[i].high){
-			TraceFile << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
-			TraceFile << "\n spotted an address contained in a known memory region belonging to a module";
-			TraceFile << "\nThe module is: " << mem_array[i].name<< " and the sample tried to access this addres with a WriteOP";
-			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
-			TraceFile << "\n the address of interest is: " << (int)addr;
-			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
-		}
+	counter++;
+	if (counter<100){
+	op_map[counter].address = addr;
+	op_map[counter].op = 'W';
+	TraceFile << op_map[counter].op << " " << op_map[counter].address << "\n";
 	}
 }
-
 //function to analyze memory accesses
 VOID ValidateMemory(INS ins, VOID *v) {
 	UINT32 mem_operands = INS_MemoryOperandCount(ins);
-	for (UINT32 memOp = 0; memOp < mem_operands; memOp++){
-		if (INS_MemoryOperandIsRead(ins, memOp))
-		{
+	for (UINT32 memOp = 0; memOp < mem_operands; memOp++)
+	{
+		if (INS_IsMemoryRead(ins)) {
+			//op_map[counter].address = ins;
+			//op_map[memOp].op = 0;
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemR,
 				IARG_INST_PTR,
 				IARG_MEMORYOP_EA, memOp,
 				IARG_END);
 		}
-		if (INS_MemoryOperandIsWritten(ins, memOp))
-		{
+		if (INS_IsMemoryRead(ins)) {
+			//op_map[counter].address = memOp;
+			//op_map[memOp].op = 1;
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemW,
 				IARG_INST_PTR,
