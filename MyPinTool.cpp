@@ -37,17 +37,8 @@ typedef struct mem_regions_t {
 typedef struct mem_map_t {
 	VOID * address;
 	char op;
+	int id;
 }mem_map;
-typedef struct _MEMORY_BASIC_INFORMATION {
-	void*  BaseAddress;
-	void*  AllocationBase;
-	int  AllocationProtect;
-	int   PartitionId;
-	size_t RegionSize;
-	int State;
-	int  Protect;
-	int  Type;
-} MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
 
 //*******************************************************************
 //GLOBAL VARIABLES
@@ -58,46 +49,78 @@ int* p2BuffVQ;
 int* p2BuffVQEx;
 int img_counter = 0;
 mem_regions mem_array[100]; //array in which i store valuable informations about the images
-mem_map op_map[1000];
-int counter = 0;
+mem_map op_map[10000];
+int counter = 0; //counter for instructions
 //*******************************************************************
 //FUNCTION DEFINITIONS
 //*******************************************************************
 //function to record a write if falls within known mem_region
-VOID RecordMemR(VOID * ip, VOID * addr){
-	counter++;
-	if (counter < 100) {
-		op_map[counter].address = addr;
-		op_map[counter].op = 'R';
-		TraceFile<< op_map[counter].op << " "<< op_map[counter].address << "\n";
+VOID RecordMemR(VOID * ip, VOID * addr) {
+	int mem_reg = 0;
+	counter++;	
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	bool done = FALSE;
+	//for(IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)){
+	for(int i=0; i< img_counter; i++){
+		//if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >=IMG_LowAddress(img)){
+		if(counter < 10000 && (int)addr < mem_array[i].high && (int) addr >= mem_array[i].low){
+			op_map[counter].address = addr;
+			op_map[counter].op = 'R';
+			op_map[counter].id = counter;
+			done = TRUE;
+			TraceFile << op_map[counter].id << "\t" << op_map[counter].op << " happened in img: " << mem_array[i].name<"\n";
+		}
+	}
+	if(!done){
+		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
+		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+		mem_array[img_counter].id = 0;
+		mem_array[img_counter].high = mem_reg;
+		mem_array[img_counter].low = (int)memInfo.BaseAddress;
+		mem_array[img_counter].name = "Unknown";
+		TraceFile << counter << " R operation happening at addr: " << addr << " belonging to "<< mem_array[img_counter].name << " module\n";
+		TraceFile << "\t memory region from: "<< memInfo.BaseAddress<< " to " << (void*)mem_reg<<"\n";
 	}
 }
 //function to record a write if falls within known mem_region
-VOID RecordMemW(VOID * ip, VOID * addr){
+VOID RecordMemW(VOID * ip, VOID * addr) {
+	int mem_reg = 0;
 	counter++;
-	if (counter<100){
-	op_map[counter].address = addr;
-	op_map[counter].op = 'W';
-	TraceFile << op_map[counter].op << " " << op_map[counter].address << "\n";
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	bool done = FALSE;
+	for (IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)) {
+		if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >= IMG_LowAddress(img)) {
+			op_map[counter].address = addr;
+			op_map[counter].op = 'W';
+			op_map[counter].id = counter;
+			done = TRUE;
+			TraceFile << op_map[counter].id << "\t" << op_map[counter].op << " happened in img: " << IMG_Name(img) << "\n";
+		}
+	}
+	if (!done) {
+		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
+		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+		mem_array[img_counter].id = 0;
+		mem_array[img_counter].high = mem_reg;
+		mem_array[img_counter].low = (int)memInfo.BaseAddress;
+		mem_array[img_counter].name = "Unknown";
+		TraceFile << counter << " W operation happening at addr: " << addr << " belonging to " << mem_array[img_counter].name << " module\n";
+		TraceFile << "\t memory region from: " << (int)memInfo.BaseAddress << " to " << mem_reg << "\n";
 	}
 }
 //function to analyze memory accesses
-VOID ValidateMemory(INS ins, VOID *v) {
+VOID ValidateMemory(INS ins, VOID *v){
 	UINT32 mem_operands = INS_MemoryOperandCount(ins);
 	for (UINT32 memOp = 0; memOp < mem_operands; memOp++)
 	{
-		if (INS_IsMemoryRead(ins)) {
-			//op_map[counter].address = ins;
-			//op_map[memOp].op = 0;
+		if (INS_MemoryOperandIsRead(ins, memOp)){
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemR,
 				IARG_INST_PTR,
 				IARG_MEMORYOP_EA, memOp,
 				IARG_END);
 		}
-		if (INS_IsMemoryRead(ins)) {
-			//op_map[counter].address = memOp;
-			//op_map[memOp].op = 1;
+		if (INS_MemoryOperandIsWritten(ins, memOp)){
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemW,
 				IARG_INST_PTR,
@@ -107,48 +130,39 @@ VOID ValidateMemory(INS ins, VOID *v) {
 	}
 }
 //function to parse VirtualQueryEx arguments
-VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) { 
-	//TraceFile << name << " ProcesHandle: (" << arg0 << ")" << " lpAddress: (" << arg1 << ")" << " lpBuffer: (" << arg2 << ")" << " dwLength: (" << arg3 << ")" << endl;
+VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) {
 	int* lpbuffer = (int*)arg2;
 	p2BuffVQEx = lpbuffer;
 }
 //function to parse virtual query arguments
 VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of type MEMORY_BASIC_INFORMATION
-	int* lpbuffer =(int*) arg1;
+	int* lpbuffer = (int*)arg1;
 	p2BuffVQ = lpbuffer;
-	//TraceFile << name << " lpAddress: (" << arg0 << ")" << " lpBuffer: (" << arg1 << ")" << " dwLength: (" << arg2 << ")" << endl;
 }
 //function to retrive VirtualQuery return value	
-VOID VQAfter(ADDRINT ret, IMG img){
-MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *) p2BuffVQ;
+VOID VQAfter(ADDRINT ret, IMG img) {
+	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQ;
 	for (int i = 0; i < 50; i++) {
-		if((int)result->AllocationBase >= mem_array[i].low && (int) result->AllocationBase < mem_array[i].high){
+		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
 			TraceFile << "\n spotted an address contained in a module";
 			TraceFile << "\nThe module is: " << mem_array[i].name;
 			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
 			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
 			TraceFile << "\n the id of the image is: " << mem_array[i].id;
-			}
+		}
 	}
 }
 VOID VQExAfter(ADDRINT ret) {
-	MEMORY_BASIC_INFORMATION* result = (MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
+	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
 	for (int i = 0; i < 50; i++) {
-		if((int)result->AllocationBase >= mem_array[i].low && (int) result->AllocationBase < mem_array[i].high){
+		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
 			TraceFile << "\n spotted an address contained in a module VIRTUALQUERYEX";
 			TraceFile << "\nThe module is: " << mem_array[i].name;
 			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
 			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
 			TraceFile << "\n the id of the image is: " << mem_array[i].id;
-			}
+		}
 	}
-}
-//function to format information about VirtualQuery
-VOID* alertprint(IMG img, RTN rtn) {
-	TraceFile << "This file loads Image " << IMG_Name(img) << " which contains: \n";
-	TraceFile << "\t" << RTN_Name(rtn) << " at address: " << RTN_Address(rtn) << "\n";
-	TraceFile << "\t" << "the routine is associated with the following SYM " << SYM_Name(RTN_Sym(rtn)) << "\n";
-	return 0;
 }
 VOID instrumentVQ(IMG img, VOID *v) {
 	const char* name1 = "VirtualQuery";
@@ -157,10 +171,6 @@ VOID instrumentVQ(IMG img, VOID *v) {
 	RTN rtn2 = RTN_FindByName(img, name2);
 	if (RTN_Valid(rtn1)) {
 		RTN_Open(rtn1);
-		//function to format information about VirtualQuery
-		/*RTN_InsertCall(rtn1, IPOINT_AFTER, (AFUNPTR)alertprint(img, rtn1),
-			IARG_FUNCRET_EXITPOINT_VALUE,
-			IARG_END);*/
 			//function to parse VirtualQuery arguments
 		RTN_InsertCall(rtn1, IPOINT_BEFORE, (AFUNPTR)ArgVQ,
 			IARG_ADDRINT, "VirtualQuery",
@@ -173,10 +183,6 @@ VOID instrumentVQ(IMG img, VOID *v) {
 	}
 	if (RTN_Valid(rtn2)) {// does not work properly need to reconfigure for VQEx using function for VQ
 		RTN_Open(rtn2);
-		//function to format information about VirtualQuery
-		/*RTN_InsertCall(rtn2, IPOINT_AFTER, (AFUNPTR)alertprint(img, rtn2),
-			IARG_FUNCRET_EXITPOINT_VALUE,
-			IARG_END);*/
 			//function to parse VirtualQueryEx arguments
 		RTN_InsertCall(rtn2, IPOINT_BEFORE, (AFUNPTR)ArgVQEx,
 			IARG_ADDRINT, "VirtualQueryEx",
@@ -190,18 +196,20 @@ VOID instrumentVQ(IMG img, VOID *v) {
 }
 VOID parse_funcsyms(IMG img, VOID *v) {
 	if (!IMG_Valid(img)) return;
+	TraceFile << "I'm here => ";
 	//building up an array in which i store valuable informations about the images
 	mem_array[img_counter].id = IMG_Id(img);
 	mem_array[img_counter].high = IMG_HighAddress(img);
 	mem_array[img_counter].low = IMG_LowAddress(img);
 	mem_array[img_counter].name = IMG_Name(img);
+	TraceFile << mem_array[img_counter].name << "\n";
 	img_counter++;
-	instrumentVQ(img, 0);
+	//instrumentVQ(img, 0);
 }
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
 {
 	TraceFile << name << "(" << filename << ")" << endl;
-}	
+}
 VOID CreateFileWafter(ADDRINT ret)
 {
 	TraceFile << "\tReturned handle: " << ret << endl;
@@ -224,7 +232,8 @@ INT32 Usage()
 /* ===================================================================== */
 /* Main                                                                  */
 /* ===================================================================== */
-int main(int argc, char* argv[]){
+int main(int argc, char* argv[]) {
+	int i,j;
 	// Initialize symbol processing
 	PIN_InitSymbols();
 	// Initialize pin
