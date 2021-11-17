@@ -57,44 +57,18 @@ int counter = 0; //counter for instructions
 //function to record a write if falls within known mem_region
 VOID RecordMemR(VOID * ip, VOID * addr) {
 	int mem_reg = 0;
-	counter++;	
+	counter++;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	bool done = FALSE;
 	//for(IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)){
-	for(int i=0; i< img_counter; i++){
+	for (int i = 0; i < img_counter; i++) {
 		//if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >=IMG_LowAddress(img)){
-		if(counter < 10000 && (int)addr < mem_array[i].high && (int) addr >= mem_array[i].low){
+		if (counter < 10000 && (int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
 			op_map[counter].address = addr;
 			op_map[counter].op = 'R';
 			op_map[counter].id = counter;
 			done = TRUE;
-			TraceFile << op_map[counter].id << "\t" << op_map[counter].op << " happened in img: " << mem_array[i].name<"\n";
-		}
-	}
-	if(!done){
-		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
-		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
-		mem_array[img_counter].id = 0;
-		mem_array[img_counter].high = mem_reg;
-		mem_array[img_counter].low = (int)memInfo.BaseAddress;
-		mem_array[img_counter].name = "Unknown";
-		TraceFile << counter << " R operation happening at addr: " << addr << " belonging to "<< mem_array[img_counter].name << " module\n";
-		TraceFile << "\t memory region from: "<< memInfo.BaseAddress<< " to " << (void*)mem_reg<<"\n";
-	}
-}
-//function to record a write if falls within known mem_region
-VOID RecordMemW(VOID * ip, VOID * addr) {
-	int mem_reg = 0;
-	counter++;
-	W::MEMORY_BASIC_INFORMATION memInfo;
-	bool done = FALSE;
-	for (IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)) {
-		if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >= IMG_LowAddress(img)) {
-			op_map[counter].address = addr;
-			op_map[counter].op = 'W';
-			op_map[counter].id = counter;
-			done = TRUE;
-			TraceFile << op_map[counter].id << "\t" << op_map[counter].op << " happened in img: " << IMG_Name(img) << "\n";
+			TraceFile << op_map[counter].id << ") " << op_map[counter].op << " happened in img: " << mem_array[i].name << "\n";
 		}
 	}
 	if (!done) {
@@ -104,8 +78,36 @@ VOID RecordMemW(VOID * ip, VOID * addr) {
 		mem_array[img_counter].high = mem_reg;
 		mem_array[img_counter].low = (int)memInfo.BaseAddress;
 		mem_array[img_counter].name = "Unknown";
-		TraceFile << counter << " W operation happening at addr: " << addr << " belonging to " << mem_array[img_counter].name << " module\n";
-		TraceFile << "\t memory region from: " << (int)memInfo.BaseAddress << " to " << mem_reg << "\n";
+		TraceFile << counter << ") R operation happening at addr: " << addr << " belonging to Unknown module \n";
+		TraceFile << "\t memory region from: " << memInfo.BaseAddress << " to " << (void*)mem_reg << "\n";
+	}
+}
+//function to record a write if falls within known mem_region
+VOID RecordMemW(VOID * ip, VOID * addr) {
+	int mem_reg = 0;
+	counter++;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	bool done = FALSE;
+	//for(IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)){
+	for (int i = 0; i < img_counter; i++) {
+		//if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >=IMG_LowAddress(img)){
+		if (counter < 10000 && (int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
+			op_map[counter].address = addr;
+			op_map[counter].op = 'W';
+			op_map[counter].id = counter;
+			done = TRUE;
+			TraceFile << op_map[counter].id << ") " << op_map[counter].op << " happened in img: " << mem_array[i].name << "\n";
+		}
+	}
+	if (!done) {
+		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
+		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+		mem_array[img_counter].id = 0;
+		mem_array[img_counter].high = mem_reg;
+		mem_array[img_counter].low = (int)memInfo.BaseAddress;
+		mem_array[img_counter].name = "Unknown";
+		TraceFile << counter << ") W operation happening at addr: " << addr << " belonging to Unknown module \n";
+		TraceFile << "\t memory region from: " << memInfo.BaseAddress << " to " << (void*)mem_reg << "\n";
 	}
 }
 //function to analyze memory accesses
