@@ -1,12 +1,11 @@
-﻿cl : Command line warning D9002: ignoring unknown option '/FP:strict'
-  MyPinTool.cpp
-     Creating library C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.lib and object C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.exp
+﻿     Creating library C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.lib and object C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.exp
 crtbeginS.obj : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 MyPinTool.obj : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(ms_dllcrt.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(message.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(util.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(knob.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
+pin.lib(exception.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(operand_ia32.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(pin_client.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(image.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
@@ -22,7 +21,6 @@ pin.lib(ins_xed_ia32.obj) : warning LNK4210: .CRT section exists; there may be u
 pin.lib(bigarray.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(parser.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(base_ia32.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
-pin.lib(exception.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(stripe.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(ext.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 pin.lib(bbl.obj) : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
