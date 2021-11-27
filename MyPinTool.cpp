@@ -40,6 +40,9 @@ typedef struct mem_regions_t {
 	int high;
 	int low;
 	string name;
+	W::DWORD protection;
+	W::DWORD  pagesType;
+	bool unloaded;
 }mem_regions;
 typedef struct mem_map_t {
 	VOID * address;
@@ -47,10 +50,6 @@ typedef struct mem_map_t {
 	int id;
 }mem_map;
 typedef unsigned char MEM_MASK;
-typedef struct sez {
-	ADDRINT start;
-	ADDRINT end;
-} struct_section;
 typedef enum _MEMORY_INFORMATION_CLASS
 {
 	MemoryBasicInformation, // MEMORY_BASIC_INFORMATION
@@ -82,360 +81,191 @@ typedef int long(NTAPI* _NtQueryVirtualMemory)( //since NTSTATUS is actually a t
 //*******************************************************************
 KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
 ofstream TraceFile;
-MEM_MASK pages[OS_NUM_PAGES]; // 4GB address space
-vector<struct_section> dllTextRanges;
 int img_counter = 0;
 mem_regions mem_array[100]; //array in which i store valuable informations about the images
 int counter = 0; //counter for instructions
-
-char* whitelistedDLLs[] = { "gdi32.dll",
-							"msctf.dll",
-							"comctl32.dll",
-							"windowscodecs.dll",
-							"kernelbase.dll",
-							"msvcrt.dll" };
+int unkId = 0; //index for unknown regions in memory
+mem_map op_map[10000];
+int* p2BuffVQ;
+int* p2BuffVQEx;
+int op=0;
 //*******************************************************************
 //FUNCTIONS
 //******************************************************************* 
-_NtQueryVirtualMemory NtQueryVirtualMemory;
-
-VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
-	W::BOOLEAN querySucceeded;
-	W::PVOID baseAddress;
-	W::MEMORY_BASIC_INFORMATION basicInfo;
-	baseAddress = (W::PVOID)0;
-	if (!(NtQueryVirtualMemory(
-		ProcessHandle,
-		baseAddress,
-		MemoryBasicInformation,
-		&basicInfo,
-		sizeof(W::MEMORY_BASIC_INFORMATION),
-		NULL
-	)))
-	{
-		return;
-	}
-	querySucceeded = TRUE;
-	while (querySucceeded)
-	{
-		W::PVOID allocationBase;
-		W::SIZE_T allocationSize;
-		W::ULONG type;
-		wchar_t fileName[64];
-		W::BOOLEAN cont;
-		if (basicInfo.Type == MEM_MAPPED || basicInfo.Type == MEM_IMAGE)
-		{
-			if (basicInfo.Type == MEM_MAPPED)
-				type = PH_MODULE_TYPE_MAPPED_FILE;
-			else
-				type = PH_MODULE_TYPE_MAPPED_IMAGE;
-			allocationBase = basicInfo.AllocationBase;
-			allocationSize = 0;
-			do
-			{
-				baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
-				allocationSize += basicInfo.RegionSize;
-
-				if (!(NtQueryVirtualMemory(
-					ProcessHandle,
-					baseAddress,
-					MemoryBasicInformation,
-					&basicInfo,
-					sizeof(W::MEMORY_BASIC_INFORMATION),
-					NULL
-				)))
-				{
-					querySucceeded = FALSE;
-					break;
-				}
-			} while (basicInfo.AllocationBase == allocationBase);
-			/*if (!(PhGetProcessMappedFileName(
-				ProcessHandle,
-				allocationBase,
-				&fileName
-			)))
-			{
-				continue;
-			}*/
-			//wprintf(L"Filename: %s\n", fileName);
-			cout << "Before TraceFile";
-			TraceFile << fileName<< "\n";
-			char* type_s = (basicInfo.Type == MEM_MAPPED) ? "mapped" : "image";
-			//printf("Base, size, type: %p %x %s\n", allocationBase, allocationSize, type_s);
-		}
-		else
-		{
-			baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
-			if (!(NtQueryVirtualMemory(
-				ProcessHandle,
-				baseAddress,
-				MemoryBasicInformation,
-				&basicInfo,
-				sizeof(W::MEMORY_BASIC_INFORMATION),
-				NULL
-			)))
-			{
-				querySucceeded = FALSE;
-			}
+//function to record a write if falls within known mem_region
+BOOL  validateRead(VOID * ip, VOID * addr) {
+	bool found=1; // to use if then call i have to return 1 if i want to execute thencall
+	for (int i = 0; i < img_counter; i++) {
+		if ((int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
+			found = 0; // to no use the then call i have to return 0
+			return found;
 		}
 	}
-}
-inline MEM_MASK getRWX(SEC section) {
-	// ASSUMPTION: Pin does not load sections with PAGE_GUARD enabled
-	// bit 0: R, bit 1: W, bit 2: X
-	return MEM_ACCESSIBLE |
-		(SEC_IsReadable(section) ? 1 : 0) | // ternary to suppress warning
-		((SEC_IsWriteable(section) ? 1 : 0) << 1) |
-		((SEC_IsExecutable(section) ? 1 : 0) << 2);
+	return found;
 }
 
-int MEMORY_AuxRegisterArea(ADDRINT start, ADDRINT size, MEM_MASK mask) {
-	UINT32 pageIdxStart = MEM_GET_PAGE(start);
-	UINT32 pageIdxEnd = MEM_GET_PAGE(start + size - 1);
-	if (size == 0) pageIdxEnd = pageIdxStart;
-	int ret = 0;
-	MEM_MASK lastMask = -1;
-	do {
-		MEM_MASK m = pages[pageIdxStart];
-		if (m) {
-			if (m != mask) {
-				if (lastMask != m) {
-					//cout << "COFFEE " << hex << start << " " << hex << pageIdxStart << " " << hex << (ADDRINT)m << " " << hex << (ADDRINT)mask << endl;
-					lastMask = m;
-				}
-				ret |= 0x1;
-			}
-			ret |= 0x2; // 0x1 for wrong, 0x2 for found
-		}
-		pages[pageIdxStart] = mask;
-	} while (pageIdxStart++ != pageIdxEnd);
-	return ret;
-}
-
-ADDRINT PIN_FAST_ANALYSIS_CALL validateRead(ADDRINT addr) {
-	return !MEM_IS_READABLE(pages[MEM_GET_PAGE(addr)]);
-}
-
-ADDRINT validateReadAux(ADDRINT val, ADDRINT eip, THREADID tid, CONTEXT *ctx) {
-	MEM_MASK mask = pages[MEM_GET_PAGE(val)];
-
-	if (mask == 0) { // region not in the map/no permissions
-		EXCEPTION_INFO exc;
-		// 0xc0000005 is Windows code for memory access violation
-		PIN_InitWindowsExceptionInfo(&exc, 0xc0000005, eip);
-		//PIN_SetContextReg(ctx, REG_INST_PTR, PIN_GetContextReg(ctx, REG_INST_PTR) + 0x1); // add 0x1 to get the right address
-		PIN_RaiseException(ctx, tid, &exc);
+VOID  missRead(VOID* ip, VOID * addr) {
+	int mem_reg = 0;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
+	if (img_counter < 100 && op<20) {
+		TraceFile << "OK I PULL UP 3 \n";
+		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+		mem_array[img_counter].protection = memInfo.Protect;
+		mem_array[img_counter].id = img_counter;
+		mem_array[img_counter].high = mem_reg - 1;
+		mem_array[img_counter].low = (int)memInfo.BaseAddress;
+		mem_array[img_counter].name = "Unknown";
+		mem_array[img_counter].protection = memInfo.Protect;
+		mem_array[img_counter].pagesType = memInfo.Type;
+		mem_array[img_counter].unloaded = 0;
+		img_counter++;
+		op++;
 	}
-	else if (!(mask & MEM_ACCESSIBLE)) { // region is not accessible
-		// Pin doesn't handle guarded pages correctly only when
-		// fetching code, but data read/write accesses are fine
-		//LOG_AR("(IM)POSSIBLE PAGE GUARD BUG IN PIN");
-	}
-	else if (!(mask & MEM_READABLE)) { // region is not readable
-		EXCEPTION_INFO exc;
-		PIN_InitWindowsExceptionInfo(&exc, 0xc0000005, val);
-		//PIN_SetContextReg(ctx, REG_INST_PTR, PIN_GetContextReg(ctx, REG_INST_PTR) + 0x1); // add 0x1 to get the right address
-		PIN_RaiseException(ctx, tid, &exc);
-	}
-	return val;
 }
-MEM_MASK MEMORY_WinToPinCast(UINT32 permissions) {
-	// https://docs.microsoft.com/en-us/windows/desktop/memory/memory-protection-constants
 
-	// CFI stuff not available in VS2010
-#ifndef PAGE_TARGETS_INVALID
-#define PAGE_TARGETS_INVALID	0x40000000
-#endif
-#ifndef PAGE_TARGETS_NO_UPDATE
-#define PAGE_TARGETS_NO_UPDATE	0x40000000
-#endif
-
-// standard modifiers
-// PAGE_GUARD 0x100 => needs special handling
-// PAGE_NOCACHE 0x200
-// PAGE_WRITECOMBINE 0x400
-	MEM_MASK mask;
-	UINT32 clearMask = ~(PAGE_NOCACHE | PAGE_WRITECOMBINE |
-		PAGE_TARGETS_INVALID | PAGE_TARGETS_NO_UPDATE);
-
-	switch (permissions & clearMask) {
-	case PAGE_EXECUTE:
-		mask = MEM_EXECUTABLE | MEM_READABLE; break;
-	case PAGE_EXECUTE_READ:
-		mask = MEM_EXECUTABLE | MEM_READABLE; break;
-	case PAGE_EXECUTE_READWRITE:
-	case PAGE_EXECUTE_WRITECOPY:
-		mask = MEM_EXECUTABLE | MEM_READABLE | MEM_WRITEABLE; break;
-	case PAGE_READONLY:
-		mask = MEM_READABLE; break;
-	case PAGE_READWRITE:
-	case PAGE_WRITECOPY:
-		mask = MEM_READABLE | MEM_WRITEABLE; break;
-	default:
-		mask = 0; // PAGE_NOACCESS
-	}
-	if (mask && !(permissions & PAGE_GUARD)) {
-		mask |= MEM_ACCESSIBLE;
-	}
-	return mask;
-}
-bool MEMORY_AddMappedMemory(ADDRINT start, ADDRINT end, ADDRINT eip) {
-	W::MEMORY_BASIC_INFORMATION mem;
-	W::SIZE_T numBytes;
-	ADDRINT address = start;
-	W::PVOID maxAddr = 0;
-	int count = 0;
-	bool changed = FALSE;
-	while (1) {
-		numBytes = W::VirtualQuery((W::LPCVOID)address, &mem, sizeof(mem));
-		// workaround for not getting stuck on the last valid block
-		if ((maxAddr && maxAddr >= mem.BaseAddress) || end <= (ADDRINT)mem.BaseAddress) break;
-		maxAddr = mem.BaseAddress;
-		ADDRINT startAddr = (ADDRINT)mem.BaseAddress;
-		ADDRINT size = mem.RegionSize;
-		MEM_MASK mask = MEMORY_WinToPinCast(mem.Protect);
-		bool insideDll = FALSE;
-		if (eip != NULL) {
-			for (std::vector<struct_section>::iterator it = dllTextRanges.begin(); it != dllTextRanges.end(); ++it) {
-				if (it->start <= eip && eip < it->end) {
-					insideDll = TRUE;
-				}
-			}
-		}
-		if (mem.State != MEM_FREE && (mem.Type != MEM_PRIVATE || insideDll)) {
-			++count;
-			if (mask != 0) {
-				int ret = MEMORY_AuxRegisterArea(startAddr, size, mask);
-				if (!ret || ret & 0x1) changed = true;
-			}
-		}
-		address += mem.RegionSize;
-	}
-	return changed;
-}
-void MEMORY_RegisterArea(ADDRINT start, ADDRINT size, MEM_MASK mask) {
-	UINT32 pageIdxStart = MEM_GET_PAGE(start);
-	UINT32 pageIdxEnd = MEM_GET_PAGE(start + size - 1);
-	if (size == 0) pageIdxEnd = pageIdxStart;
-	do {
-		pages[pageIdxStart] = mask;
-	} while (pageIdxStart++ != pageIdxEnd);
-}
 VOID RecordMemR(VOID * ip, VOID * addr) {
 	int mem_reg = 0;
-	W::DWORD protection = 0;
-	counter++;
-	W::MEMORY_BASIC_INFORMATION memInfo;
-	bool done = FALSE;
-	//for(IMG img = APP_ImgHead(); IMG_Valid(img); img = IMG_Next(img)){
-	for (int i = 0; i < img_counter; i++) {
-		//if (counter < 10000 && (int)addr < IMG_HighAddress(img) && (int)addr >=IMG_LowAddress(img)){
-		if (counter < 10000 && (int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
-			done = TRUE;
-			//TraceFile << op_map[counter].id << ") " << op_map[counter].op << " happened in img: " << mem_array[i].name << "\n";
-		}
-	}
-	if (!done) {
-		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
-		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
-		protection = memInfo.Protect;
-		mem_array[img_counter].id = 0;
-		mem_array[img_counter].high = mem_reg;
-		mem_array[img_counter].low = (int)memInfo.BaseAddress;
-		mem_array[img_counter].name = "Unknown";
-	}
-}
-//function to record a write if falls within known mem_region
-VOID RecordMemW(VOID * ip, VOID * addr) {
-	int mem_reg = 0;
-	counter++;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	bool done = FALSE;
 	for (int i = 0; i < img_counter; i++) {
-		if (counter < 10000 && (int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
+		if ((int)addr < mem_array[i].high && (int)addr >= mem_array[i].low) {
+			op_map[counter].address = addr;
+			op_map[counter].op = 'R';
+			op_map[counter].id = counter;
 			done = TRUE;
 		}
 	}
 	if (!done) {
 		W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
+		if(img_counter<100){
 		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
-		mem_array[img_counter].id = 0;
-		mem_array[img_counter].high = mem_reg;
+		mem_array[img_counter].protection = memInfo.Protect;
+		mem_array[img_counter].id = img_counter;
+		mem_array[img_counter].high = mem_reg-1;
 		mem_array[img_counter].low = (int)memInfo.BaseAddress;
 		mem_array[img_counter].name = "Unknown";
-		W::HANDLE curProc = W::GetCurrentProcess();
-		PhpEnumGenericMappedFilesAndImages(curProc);
+		mem_array[img_counter].protection = memInfo.Protect;
+		mem_array[img_counter].pagesType = memInfo.Type;
+		mem_array[img_counter].unloaded = 0;
+		img_counter++;
+		}
 	}
 }
-static void MEMORY_InstrumentINS(INS ins,VOID* ip) {
-	UINT32 numMemOps = INS_MemoryOperandCount(ins);
-	for (UINT32 opIdx = 0; opIdx < numMemOps; opIdx++) {
-		if (INS_MemoryOperandIsRead(ins, opIdx)) {
-			INS_InsertCall(
-				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemR,
+
+//function to analyze memory accesses
+VOID ValidateMemory(INS ins, VOID *v) {
+	UINT32 mem_operands = INS_MemoryOperandCount(ins);
+	for (UINT32 memOp = 0; memOp < mem_operands; memOp++)
+	{
+		if (INS_MemoryOperandIsRead(ins, memOp)) {
+			INS_InsertIfCall(
+				ins, IPOINT_BEFORE, 
+				(AFUNPTR)validateRead,
 				IARG_INST_PTR,
-				IARG_MEMORYOP_EA, opIdx,
+				IARG_MEMORYOP_EA, memOp,
 				IARG_END);
-		}
-		/*if (INS_MemoryOperandIsWritten(ins, opIdx)) {
-			INS_InsertCall(
-				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemW,
+			INS_InsertThenCall(
+				ins, IPOINT_BEFORE,
+				(AFUNPTR)missRead,
 				IARG_INST_PTR,
-				IARG_MEMORYOP_EA, opIdx,
-				IARG_END);
-		}*/
+				IARG_MEMORYOP_EA, memOp,
+				IARG_END
+			);
+		}
 	}
 }
 
-static void image(IMG img, VOID* ip) {
-	// with _paranoidKnob ESP is seen as a general-purpose register
-	ADDRINT imgStart = IMG_LowAddress(img);
-	ADDRINT imgEnd = IMG_HighAddress(img);
-	UINT32 numReg = IMG_NumRegions(img);
-	for (size_t i = 0; i < numReg; i++) {
-		ADDRINT hAddr = IMG_RegionHighAddress(img, i);
-		ADDRINT lAddr = IMG_RegionLowAddress(img, i);
-		MEMORY_AddMappedMemory(lAddr, hAddr, NULL);
-	}
-
-	bool whiteListed = false;
-	const char* imgName = IMG_Name(img).c_str();
-	char tmp[MAX_PATH];
-	for (size_t i = 0; imgName[i]; ++i) { // strlen :-)
-		tmp[i] = tolower(imgName[i]);
-	}
-	string imgNameStr(tmp);
-	for (size_t i = 0; i < sizeof(whitelistedDLLs) / sizeof(char*); ++i) {
-		if (imgNameStr.find(whitelistedDLLs[i]) != string::npos) {
-			whiteListed = true;
-			break;
-		}
-	}
-	for (SEC section = IMG_SecHead(img); SEC_Valid(section); section = SEC_Next(section)) {
-		ADDRINT secStart = SEC_Address(section);
-		ADDRINT secSize = SEC_Size(section);
-
-		// DLLs have only .text as executable section (I guess?)
-		if (whiteListed && SEC_Name(section).compare(".text") == 0) {
-			struct_section sec;
-			sec.start = secStart;
-			sec.end = secStart + secSize;
-			dllTextRanges.push_back(sec);
-		}
-		MEM_MASK rwx = getRWX(section);
-		// memory hook
-		MEMORY_RegisterArea(secStart, secSize, rwx);
-	}
-
+VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) {
+	int* lpbuffer = (int*)arg2;
+	p2BuffVQEx = lpbuffer;
 }
-
+//function to parse virtual query arguments
+VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of type MEMORY_BASIC_INFORMATION
+	int* lpbuffer = (int*)arg1;
+	p2BuffVQ = lpbuffer;
+}
+//function to retrive VirtualQuery return value	
+VOID VQAfter(ADDRINT ret, IMG img) {
+	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQ;
+	for (int i = 0; i < 50; i++) {
+		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
+			/*TraceFile << "\n spotted an address contained in a module";
+			TraceFile << "\nThe module is: " << mem_array[i].name;
+			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
+			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
+			TraceFile << "\n the id of the image is: " << mem_array[i].id;*/
+		}
+	}
+}
+VOID VQExAfter(ADDRINT ret) {
+	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
+	for (int i = 0; i < 50; i++) {
+		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
+			/*TraceFile << "\n spotted an address contained in a module VIRTUALQUERYEX";
+			TraceFile << "\nThe module is: " << mem_array[i].name;
+			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
+			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
+			TraceFile << "\n the id of the image is: " << mem_array[i].id;*/
+		}
+	}
+}
+VOID instrumentVQ(IMG img, VOID *v) {
+	const char* name1 = "VirtualQuery";
+	const char* name2 = "VirtualQueryEx";
+	RTN rtn1 = RTN_FindByName(img, name1);
+	RTN rtn2 = RTN_FindByName(img, name2);
+	if (RTN_Valid(rtn1)) {
+		RTN_Open(rtn1);
+		//function to parse VirtualQuery arguments
+		RTN_InsertCall(rtn1, IPOINT_BEFORE, (AFUNPTR)ArgVQ,
+			IARG_ADDRINT, "VirtualQuery",
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_FUNCARG_ENTRYPOINT_VALUE, 1, IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
+			IARG_END);
+		//function to retrive VirtualQuery return value	
+		RTN_InsertCall(rtn1, IPOINT_AFTER, (AFUNPTR)VQAfter,
+			IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
+		RTN_Close(rtn1);
+	}
+	if (RTN_Valid(rtn2)) {// does not work properly need to reconfigure for VQEx using function for VQ
+		RTN_Open(rtn2);
+		//function to parse VirtualQueryEx arguments
+		RTN_InsertCall(rtn2, IPOINT_BEFORE, (AFUNPTR)ArgVQEx,
+			IARG_ADDRINT, "VirtualQueryEx",
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_FUNCARG_ENTRYPOINT_VALUE, 1, IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
+			IARG_END);
+		//function to retrive VirtualQuery return value	
+		RTN_InsertCall(rtn2, IPOINT_AFTER, (AFUNPTR)VQAfter,
+			IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
+		RTN_Close(rtn2);
+	}
+}
 VOID parse_funcsyms(IMG img, VOID *v) {
 	if (!IMG_Valid(img)) return;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	//building up an array in which i store valuable informations about the images
 	mem_array[img_counter].id = IMG_Id(img);
 	mem_array[img_counter].high = IMG_HighAddress(img);
 	mem_array[img_counter].low = IMG_LowAddress(img);
 	mem_array[img_counter].name = IMG_Name(img);
+	W::VirtualQuery((W::LPCVOID)IMG_EntryAddress(img), &memInfo, sizeof(memInfo));
+	mem_array[img_counter].protection = memInfo.Protect;
+	mem_array[img_counter].pagesType = memInfo.Type;
+	mem_array[img_counter].unloaded = 0;
+	TraceFile << "img: " << mem_array[img_counter].name << " is loaded  \n";
 	img_counter++;
+	//instrumentVQ(img, 0);
+}
+
+VOID ImageUnload(IMG img, VOID* v){
+	int index = 0;
+	for (int i = 0; i < img_counter; i++) {
+		if (IMG_Id(img) == mem_array[i].id) {
+			mem_array[i].unloaded = 1;
+			index = i;
+		}
+	}
+	TraceFile << "img: " << mem_array[index].name << " is unloaded  \n";
 }
 
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
@@ -472,8 +302,9 @@ int main(int argc, char* argv[]) {
 	TraceFile.open(KnobOutputFile.Value().c_str());
 	// Parse function names
 	IMG_AddInstrumentFunction(parse_funcsyms, 0);
+	IMG_AddUnloadFunction(ImageUnload, 0);
 	// function to analyze memory access 
-	INS_AddInstrumentFunction(MEMORY_InstrumentINS, 0);
+	INS_AddInstrumentFunction(ValidateMemory, 0);
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	// Start the program, never returns
