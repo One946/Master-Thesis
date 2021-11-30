@@ -35,6 +35,17 @@ using namespace std;
 //*******************************************************************
 //TYPEDEF
 //*******************************************************************
+enum {
+	VirtualQuery_INDEX=0,
+	VirtualQueryEx_INDEX,
+	CoTaskMemAlloc_INDEX,
+	GlobalAlloc_INDEX,
+	HeapAlloc_INDEX,
+	LocalAlloc_INDEX,
+	malloc_INDEX,
+	new_INDEX, 
+	VirtualAlloc_INDEX
+};
 typedef struct mem_regions_t {
 	int id;
 	int high;
@@ -50,28 +61,11 @@ typedef struct mem_map_t {
 	int id;
 }mem_map;
 typedef unsigned char MEM_MASK;
-typedef enum _MEMORY_INFORMATION_CLASS
-{
-	MemoryBasicInformation, // MEMORY_BASIC_INFORMATION
-	MemoryWorkingSetInformation, // MEMORY_WORKING_SET_INFORMATION
-	MemoryMappedFilenameInformation, // UNICODE_STRING
-	MemoryRegionInformation, // MEMORY_REGION_INFORMATION
-	MemoryWorkingSetExInformation, // MEMORY_WORKING_SET_EX_INFORMATION
-	MemorySharedCommitInformation, // MEMORY_SHARED_COMMIT_INFORMATION
-	MemoryImageInformation, // MEMORY_IMAGE_INFORMATION
-	MemoryRegionInformationEx, // MEMORY_REGION_INFORMATION
-	MemoryPrivilegedBasicInformation,
-	MemoryEnclaveImageInformation, // MEMORY_ENCLAVE_IMAGE_INFORMATION // since REDSTONE3
-	MemoryBasicInformationCapped, // 10
-	MemoryPhysicalContiguityInformation, // MEMORY_PHYSICAL_CONTIGUITY_INFORMATION // since 20H1
-	MaxMemoryInfoClass
-} MEMORY_INFORMATION_CLASS;
 
 // https://stackoverflow.com/questions/28859456/function-returning-function-is-not-allowed-in-typedef-foobar
 typedef int long(NTAPI* _NtQueryVirtualMemory)( //since NTSTATUS is actually a typedef to LONG. The workaround was to replace the function return type from NTSTATUS to LONG(but ideally includes should be fixed so that NTSTATUS is resoved).
 	W::HANDLE                   ProcessHandle,
 	W::PVOID                    BaseAddress,
-	MEMORY_INFORMATION_CLASS MemoryInformationClass,
 	W::PVOID                    MemoryInformation,
 	W::SIZE_T                   MemoryInformationLength,
 	W::PSIZE_T                  ReturnLength
@@ -88,7 +82,6 @@ int unkId = 0; //index for unknown regions in memory
 mem_map op_map[10000];
 int* p2BuffVQ;
 int* p2BuffVQEx;
-int op=0;
 //*******************************************************************
 //FUNCTIONS
 //******************************************************************* 
@@ -108,7 +101,7 @@ VOID  missRead(VOID* ip, VOID * addr) {
 	int mem_reg = 0;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	W::VirtualQuery((W::LPCVOID)addr, &memInfo, sizeof(memInfo));
-	if (img_counter < 100 && op<20) {
+	if (img_counter < 100) {
 		TraceFile << "OK I PULL UP 3 \n";
 		mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
 		mem_array[img_counter].protection = memInfo.Protect;
@@ -120,11 +113,10 @@ VOID  missRead(VOID* ip, VOID * addr) {
 		mem_array[img_counter].pagesType = memInfo.Type;
 		mem_array[img_counter].unloaded = 0;
 		img_counter++;
-		op++;
 	}
 }
 
-VOID RecordMemR(VOID * ip, VOID * addr) {
+VOID RecordMemR(VOID * addr) {
 	int mem_reg = 0;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	bool done = FALSE;
@@ -176,6 +168,50 @@ VOID ValidateMemory(INS ins, VOID *v) {
 	}
 }
 
+VOID findStacks(CONTEXT *ctxt) {
+	TraceFile << "in findStacks\n";
+	int base;
+	int max;
+	int index;
+	int todo = 1;
+	// register stack region
+	ADDRINT currentSP = PIN_GetContextReg(ctxt, REG_STACK_PTR);
+	ADDRINT end = currentSP;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	W::VirtualQuery((W::LPCVOID)currentSP, &memInfo, sizeof(memInfo));
+	base = (int)memInfo.BaseAddress;
+	max = (int)memInfo.RegionSize + (int)memInfo.BaseAddress - 1;
+	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+		for (int i = 0; i < img_counter; i++) {
+			if ((int)currentSP < mem_array[i].high && (int)currentSP >= mem_array[i].low){
+				TraceFile << "checking todo";
+				todo = 0;
+				index = i;
+				break;
+			}
+		}
+		if (todo) {
+			int mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].id = img_counter;
+			mem_array[img_counter].high = mem_reg - 1;
+			mem_array[img_counter].low = (int)memInfo.BaseAddress;
+			mem_array[img_counter].name = "StackRegion";
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].pagesType = memInfo.Type;
+			mem_array[img_counter].unloaded = 0;
+			TraceFile << "added a stack region with id=" << mem_array[img_counter].id << "\n";
+			TraceFile << "base =" << base << " mem_array base=" << mem_array[index].low << "\n";
+			img_counter++;
+		}
+	}
+}	
+
+VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
+	TraceFile << "in thread start \n"; 
+	findStacks(ctxt);
+	}
+
 VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) {
 	int* lpbuffer = (int*)arg2;
 	p2BuffVQEx = lpbuffer;
@@ -211,6 +247,7 @@ VOID VQExAfter(ADDRINT ret) {
 	}
 }
 VOID instrumentVQ(IMG img, VOID *v) {
+	//CoTaskMemAlloc  GlobalAlloc   HeapAlloc   LocalAlloc	malloc		new   VirtualAlloc
 	const char* name1 = "VirtualQuery";
 	const char* name2 = "VirtualQueryEx";
 	RTN rtn1 = RTN_FindByName(img, name1);
@@ -240,11 +277,18 @@ VOID instrumentVQ(IMG img, VOID *v) {
 		RTN_Close(rtn2);
 	}
 }
+
+VOID MemAlloc(IMG img, VOID *v) {
+	//CoTaskMemAlloc  GlobalAlloc   HeapAlloc   LocalAlloc	malloc		new   VirtualAlloc
+	const char* names[] = { "VirtualQuery", "VirtualQueryEx", "CoTaskMemAlloc", "GlobalAlloc", "HeapAlloc", "LocalAlloc", "malloc", "new", "VirtualAlloc" };
+	
+}
+
 VOID parse_funcsyms(IMG img, VOID *v) {
 	if (!IMG_Valid(img)) return;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
-	mem_array[img_counter].id = IMG_Id(img);
+	mem_array[img_counter].id = IMG_Id(img)-1;
 	mem_array[img_counter].high = IMG_HighAddress(img);
 	mem_array[img_counter].low = IMG_LowAddress(img);
 	mem_array[img_counter].name = IMG_Name(img);
@@ -255,6 +299,7 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	TraceFile << "img: " << mem_array[img_counter].name << " is loaded  \n";
 	img_counter++;
 	//instrumentVQ(img, 0);
+	MemAlloc(img, 0);
 }
 
 VOID ImageUnload(IMG img, VOID* v){
@@ -301,10 +346,11 @@ int main(int argc, char* argv[]) {
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
 	// Parse function names
+	//PIN_AddThreadStartFunction(OnThreadStart, NULL);
 	IMG_AddInstrumentFunction(parse_funcsyms, 0);
 	IMG_AddUnloadFunction(ImageUnload, 0);
 	// function to analyze memory access 
-	INS_AddInstrumentFunction(ValidateMemory, 0);
+	//INS_AddInstrumentFunction(ValidateMemory, 0);
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	// Start the program, never returns
