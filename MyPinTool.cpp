@@ -262,7 +262,7 @@ VOID CTMAAfter(ADDRINT ret, IMG img) {
 	CTMAlloc =  ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
 				todo = 0;
@@ -289,7 +289,7 @@ VOID GAfter(ADDRINT ret, IMG img) {
 	GAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
 				todo = 0;
@@ -316,7 +316,7 @@ VOID HAAfter(ADDRINT ret, IMG img) {
 	HAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
 				todo = 0;
@@ -343,7 +343,7 @@ VOID LAAfter(ADDRINT ret, IMG img) {
 	LAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
 				todo = 0;
@@ -370,7 +370,7 @@ VOID MAAfter(ADDRINT ret, VOID*  rtn) {
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	mAlloc = ret;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
 				todo = 0;
@@ -397,6 +397,29 @@ VOID MAAfter(ADDRINT ret, VOID*  rtn) {
 }
 VOID VAAfter(ADDRINT ret, IMG img) {
 	VAlloc = ret;
+	int todo = 1;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	if (img_counter < 100) {
+		for (int i = 0; i < img_counter; i++) {
+			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
+				todo = 0;
+				break;
+			}
+		}
+		if (todo) {
+			W::VirtualQuery((W::LPCVOID)ret, &memInfo, sizeof(memInfo));
+			int mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].id = img_counter;
+			mem_array[img_counter].high = mem_reg - 1;
+			mem_array[img_counter].low = (int)memInfo.BaseAddress;
+			mem_array[img_counter].name = "VirtualAlloc";
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].pagesType = memInfo.Type;
+			mem_array[img_counter].unloaded = 0;
+			img_counter++;
+		}
+	}
 	TraceFile << " return value of  VirtualAlloc :" << VAlloc << " \n";
 }
 VOID MemAlloc(IMG img, VOID *v) {
@@ -512,6 +535,21 @@ VOID MemAlloc(IMG img, VOID *v) {
 }
 
 VOID parse_funcsyms(IMG img, VOID *v) {
+	/*
+	W::BOOL bResult;
+	W::HANDLE hHeap;
+	W::ULONG HeapInformation;
+	hHeap = W::GetProcessHeap();
+	bResult = W::HeapQueryInformation(hHeap,
+		W::HeapCompatibilityInformation,
+		&HeapInformation,
+		sizeof(HeapInformation),
+		NULL);
+	if (bResult == FALSE) {
+			TraceFile << "Failed to retrieve heap features with LastError" << W::GetLastError() << ". \n";
+	}
+	TraceFile<< "HeapCompatibilityInformation is: "<< HeapInformation << " \n";
+	*/
 	if (!IMG_Valid(img)) return;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
@@ -531,6 +569,11 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 
 VOID ImageUnload(IMG img, VOID* v) {
 	int index = 0;
+	TraceFile << "*********************************************";
+	for (int i = 0; i < img_counter; i++) {
+		TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
+	}
+/*
 	for (int i = 0; i < img_counter; i++) {
 		if (IMG_Id(img)-1 == mem_array[i].id) {
 			mem_array[i].unloaded = 1;
@@ -538,7 +581,7 @@ VOID ImageUnload(IMG img, VOID* v) {
 			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
 		}
 	}
-	TraceFile << "img: " << mem_array[index].name << " is unloaded  \n";
+	TraceFile << "img: " << mem_array[index].name << " is unloaded  \n";*/
 }
 
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
