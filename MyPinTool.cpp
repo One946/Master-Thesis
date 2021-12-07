@@ -30,6 +30,7 @@ namespace W {
 #include <Windows.h>
 	//#include <ntdef.h>
 #include <ntstatus.h>
+#include <subauth.h>
 }
 using namespace std;
 //*******************************************************************
@@ -61,15 +62,44 @@ typedef struct mem_map_t {
 	int id;
 }mem_map;
 typedef unsigned char MEM_MASK;
+/****************************MAPPED FILES******************************************/
+typedef enum _MEMORY_INFORMATION_CLASS
+{
+	MemoryBasicInformation, // MEMORY_BASIC_INFORMATION
+	MemoryWorkingSetInformation, // MEMORY_WORKING_SET_INFORMATION
+	MemoryMappedFilenameInformation, // UNICODE_STRING
+	MemoryRegionInformation, // MEMORY_REGION_INFORMATION
+	MemoryWorkingSetExInformation, // MEMORY_WORKING_SET_EX_INFORMATION
+	MemorySharedCommitInformation, // MEMORY_SHARED_COMMIT_INFORMATION
+	MemoryImageInformation, // MEMORY_IMAGE_INFORMATION
+	MemoryRegionInformationEx, // MEMORY_REGION_INFORMATION
+	MemoryPrivilegedBasicInformation,
+	MemoryEnclaveImageInformation, // MEMORY_ENCLAVE_IMAGE_INFORMATION // since REDSTONE3
+	MemoryBasicInformationCapped, // 10
+	MemoryPhysicalContiguityInformation, // MEMORY_PHYSICAL_CONTIGUITY_INFORMATION // since 20H1
+	MaxMemoryInfoClass
+} MEMORY_INFORMATION_CLASS;
 
-// https://stackoverflow.com/questions/28859456/function-returning-function-is-not-allowed-in-typedef-foobar
+typedef int long(NTAPI* _NtQueryVirtualMemory)(
+	W::HANDLE                   ProcessHandle,
+	W::PVOID                    BaseAddress,
+	MEMORY_INFORMATION_CLASS MemoryInformationClass,
+	W::PVOID                    MemoryInformation,
+	W::SIZE_T                   MemoryInformationLength,
+	W::PSIZE_T                  ReturnLength
+	);
+// dynamically imported functions
+_NtQueryVirtualMemory NtQueryVirtualMemory;
+
+/* https://stackoverflow.com/questions/28859456/function-returning-function-is-not-allowed-in-typedef-foobar
 typedef int long(NTAPI* _NtQueryVirtualMemory)( //since NTSTATUS is actually a typedef to LONG. The workaround was to replace the function return type from NTSTATUS to LONG(but ideally includes should be fixed so that NTSTATUS is resoved).
 	W::HANDLE                   ProcessHandle,
 	W::PVOID                    BaseAddress,
 	W::PVOID                    MemoryInformation,
 	W::SIZE_T                   MemoryInformationLength,
 	W::PSIZE_T                  ReturnLength
-	);
+	);/*
+/****************************MAPPED FILES******************************************/
 //*******************************************************************
 //GLOBAL VARIABLES
 //*******************************************************************
@@ -80,7 +110,7 @@ mem_regions mem_array[100]; //array in which i store valuable informations about
 int counter = 0; //counter for instructions
 int unkId = 0; //index for unknown regions in memory
 mem_map op_map[10000];
-// pointers for function results
+// pointers for memory function results
 int* p2BuffVQ;
 int* p2BuffVQEx;
 ADDRINT CTMAlloc;
@@ -92,9 +122,154 @@ ADDRINT VAlloc;
 
 static map<std::string, int> fMap;
 //*******************************************************************
-//FUNCTIONS
+//MApped Files
 //******************************************************************* 
-//function to record a write if falls within known mem_region
+W::PVOID GetLibraryProcAddress(W::PSTR LibraryName, W::PSTR ProcName)
+{
+	return W::GetProcAddress(W::GetModuleHandleA(LibraryName), ProcName);
+}
+
+int long PhGetProcessMappedFileName( _In_ W::HANDLE ProcessHandle,  _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName){
+	int long status;
+	W::SIZE_T bufferSize;
+	W::SIZE_T returnLength;
+	void* buffer; //W::PUNICODE_STRING
+
+	returnLength = 0;
+	bufferSize = 0x100;
+	buffer = malloc(bufferSize);
+
+	status = NtQueryVirtualMemory(
+		ProcessHandle,
+		BaseAddress,
+		MemoryMappedFilenameInformation,
+		buffer,
+		bufferSize,
+		&returnLength
+	);
+
+	if (status == 0x80000005 && returnLength > 0) // returnLength > 0 required for MemoryMappedFilename on Windows 7 SP1 (dmex)
+	{
+		free(buffer);
+		bufferSize = returnLength;
+		buffer = malloc(bufferSize);
+
+		status = NtQueryVirtualMemory(
+			ProcessHandle,
+			BaseAddress,
+			MemoryMappedFilenameInformation,
+			buffer,
+			bufferSize,
+			&returnLength
+		);
+	}
+
+	if (!(status))
+	{
+		free(buffer);
+		return status;
+	}
+
+	//swprintf(FileName, 64, L"%s", buffer->Buffer);
+	free(buffer);
+
+	return status;
+}
+
+
+VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
+	TraceFile << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIPULLUP \n";
+	TraceFile << (void*)ProcessHandle << "\n";
+	W::BOOLEAN querySucceeded;
+	W::PVOID baseAddress;
+	W::MEMORY_BASIC_INFORMATION basicInfo;
+
+	baseAddress = (W::PVOID)0;
+	//TraceFile << "++++++"<<(NtQueryVirtualMemory(ProcessHandle, baseAddress, MemoryBasicInformation, &basicInfo, sizeof(W::MEMORY_BASIC_INFORMATION), NULL)) << "\n";
+	if ((NtQueryVirtualMemory(
+		ProcessHandle,
+		baseAddress,
+		MemoryBasicInformation,
+		&basicInfo,
+		sizeof(W::MEMORY_BASIC_INFORMATION),
+		NULL
+	)))
+	{
+		//TraceFile << "i'm in the if 1 statement \n";
+		return;
+	}
+
+	querySucceeded = TRUE;
+
+	while (querySucceeded)
+	{
+		W::PVOID allocationBase;
+		W::SIZE_T allocationSize;
+		W::ULONG type;
+		wchar_t fileName[64];
+		W::BOOLEAN cont;
+
+		if (basicInfo.Type == MEM_MAPPED || basicInfo.Type == MEM_IMAGE)
+		{
+			//TraceFile << "i'm in the if 2 statement \n";
+			if (basicInfo.Type == MEM_MAPPED)
+				type = PH_MODULE_TYPE_MAPPED_FILE;
+			else
+				type = PH_MODULE_TYPE_MAPPED_IMAGE;
+
+			// Find the total allocation size.
+
+			allocationBase = basicInfo.AllocationBase;
+			allocationSize = 0;
+
+			do
+			{
+				baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
+				allocationSize += basicInfo.RegionSize;
+
+				if ((NtQueryVirtualMemory(ProcessHandle, baseAddress, MemoryBasicInformation, &basicInfo, sizeof(W::MEMORY_BASIC_INFORMATION), NULL)))
+				{
+					//TraceFile << "i'm in the if 3 statement \n";
+					querySucceeded = FALSE;
+					break;
+				}
+			} while (basicInfo.AllocationBase == allocationBase);
+
+			// Check if we have a duplicate base address.
+			/*if (PhFindEntryHashtable(BaseAddressHashtable, &allocationBase))
+			{
+				continue;
+			}*/
+
+			if ((PhGetProcessMappedFileName( ProcessHandle, allocationBase, fileName)))
+			{
+				continue;
+			}
+
+			wprintf(L"Filename: %s\n", fileName);
+			char* type_s = (basicInfo.Type == MEM_MAPPED) ? "mapped" : "image";
+			printf("Base, size, type: %p %x %s\n", allocationBase, allocationSize, type_s);
+		}
+		else
+		{
+			//TraceFile << "i'm in the else statement";
+			baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
+
+			if ((NtQueryVirtualMemory(
+				ProcessHandle,
+				baseAddress,
+				MemoryBasicInformation,
+				&basicInfo,
+				sizeof(W::MEMORY_BASIC_INFORMATION),
+				NULL
+			)))
+			{
+				querySucceeded = FALSE;
+			}
+		}
+	}
+}
+
 
 /********************************************************************/
 /****************************ValidateMemory**********************************/
@@ -364,7 +539,7 @@ VOID LAAfter(ADDRINT ret, IMG img) {
 			img_counter++;
 		}
 	}
-	TraceFile << "Return value of  LocalAlloc :" << LAlloc << " \n";
+	//TraceFile << "Return value of  LocalAlloc :" << LAlloc << " \n";
 }
 VOID MAAfter(ADDRINT ret, VOID*  rtn) {
 	int todo = 1;
@@ -388,9 +563,9 @@ VOID MAAfter(ADDRINT ret, VOID*  rtn) {
 		mem_array[img_counter].protection = memInfo.Protect;
 		mem_array[img_counter].pagesType = memInfo.Type;
 		mem_array[img_counter].unloaded = 0;
-		TraceFile << "Base address: " << mem_array[img_counter].low << " High address: " << mem_array[img_counter].high << " \n";
-		TraceFile << "Return value of  malloc :" << mAlloc << " \n";
-		TraceFile << "Address of function: " << rtn << " \n";
+		//TraceFile << "Base address: " << mem_array[img_counter].low << " High address: " << mem_array[img_counter].high << " \n";
+		//TraceFile << "Return value of  malloc :" << mAlloc << " \n";
+		//TraceFile << "Address of function: " << rtn << " \n";
 		img_counter++;
 		}
 	}
@@ -533,7 +708,9 @@ VOID MemAlloc(IMG img, VOID *v) {
 		}
 	}
 }
-
+/********************************************************************/
+/**************************Instrumentations*******************/
+/********************************************************************/
 VOID parse_funcsyms(IMG img, VOID *v) {
 	/*
 	W::BOOL bResult;
@@ -550,6 +727,10 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	}
 	TraceFile<< "HeapCompatibilityInformation is: "<< HeapInformation << " \n";
 	*/
+	// Load ntdll dynamically
+	NtQueryVirtualMemory = (_NtQueryVirtualMemory)GetLibraryProcAddress("ntdll.dll", "NtQueryVirtualMemory");
+	W::HANDLE curProc = W::GetCurrentProcess();
+	PhpEnumGenericMappedFilesAndImages(curProc);
 	if (!IMG_Valid(img)) return;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
@@ -569,7 +750,7 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 
 VOID ImageUnload(IMG img, VOID* v) {
 	int index = 0;
-	TraceFile << "*********************************************";
+	TraceFile << "********************************************* \n";
 	for (int i = 0; i < img_counter; i++) {
 		TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
 	}
@@ -616,7 +797,6 @@ int main(int argc, char* argv[]) {
 	// Initialize pin
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
-	// Parse function names
 	//PIN_AddThreadStartFunction(OnThreadStart, NULL);
 	IMG_AddInstrumentFunction(parse_funcsyms, 0);
 	IMG_AddUnloadFunction(ImageUnload, 0);
