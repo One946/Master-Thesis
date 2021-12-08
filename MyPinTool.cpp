@@ -45,7 +45,9 @@ enum {
 	LocalAlloc_INDEX,
 	malloc_INDEX,
 	new_INDEX,
-	VirtualAlloc_INDEX
+	VirtualAlloc_INDEX,
+	HeapReAlloc_INDEX,
+	HeapFree_INDEX
 };
 typedef struct mem_regions_t {
 	int id;
@@ -110,7 +112,7 @@ mem_regions mem_array[100]; //array in which i store valuable informations about
 int counter = 0; //counter for instructions
 int unkId = 0; //index for unknown regions in memory
 mem_map op_map[10000];
-// pointers for memory function results
+// pointers for function results
 int* p2BuffVQ;
 int* p2BuffVQEx;
 ADDRINT CTMAlloc;
@@ -128,7 +130,6 @@ W::PVOID GetLibraryProcAddress(W::PSTR LibraryName, W::PSTR ProcName)
 {
 	return W::GetProcAddress(W::GetModuleHandleA(LibraryName), ProcName);
 }
-
 int long PhGetProcessMappedFileName( _In_ W::HANDLE ProcessHandle,  _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName){
 	int long status;
 	W::SIZE_T bufferSize;
@@ -176,10 +177,7 @@ int long PhGetProcessMappedFileName( _In_ W::HANDLE ProcessHandle,  _In_ W::PVOI
 	return status;
 }
 
-
 VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
-	TraceFile << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIPULLUP \n";
-	TraceFile << (void*)ProcessHandle << "\n";
 	W::BOOLEAN querySucceeded;
 	W::PVOID baseAddress;
 	W::MEMORY_BASIC_INFORMATION basicInfo;
@@ -272,7 +270,7 @@ VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
 
 
 /********************************************************************/
-/****************************ValidateMemory**********************************/
+/****************************ValidateMemory**************************/
 /********************************************************************/
 BOOL  validateRead(VOID * ip, VOID * addr) {
 	bool found = 1; // to use if then call i have to return 1 if i want to execute thencall
@@ -539,9 +537,9 @@ VOID LAAfter(ADDRINT ret, IMG img) {
 			img_counter++;
 		}
 	}
-	//TraceFile << "Return value of  LocalAlloc :" << LAlloc << " \n";
+	TraceFile << "Return value of  LocalAlloc :" << LAlloc << " \n";
 }
-VOID MAAfter(ADDRINT ret, VOID*  rtn) {
+VOID MAAfter(ADDRINT ret, VOID*  rtn) {// still have to implement the unload of dynamic memory
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	mAlloc = ret;
@@ -563,9 +561,7 @@ VOID MAAfter(ADDRINT ret, VOID*  rtn) {
 		mem_array[img_counter].protection = memInfo.Protect;
 		mem_array[img_counter].pagesType = memInfo.Type;
 		mem_array[img_counter].unloaded = 0;
-		//TraceFile << "Base address: " << mem_array[img_counter].low << " High address: " << mem_array[img_counter].high << " \n";
-		//TraceFile << "Return value of  malloc :" << mAlloc << " \n";
-		//TraceFile << "Address of function: " << rtn << " \n";
+		TraceFile << "Return value of  malloc :" << mAlloc << " \n";
 		img_counter++;
 		}
 	}
@@ -597,9 +593,83 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	}
 	TraceFile << " return value of  VirtualAlloc :" << VAlloc << " \n";
 }
+VOID hFree(W::HANDLE hHeap, W::DWORD dwFlags, W::LPVOID lpMem) {
+	TraceFile << "HeapFree " << lpMem<<" \n";
+	int todo = 0;
+	int index = 0;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
+	if (img_counter < 100) {
+		for (int i = 0; i < img_counter; i++) {
+			TraceFile << "in for ";
+			if ( (int)memInfo.BaseAddress < mem_array[i].high && (int)memInfo.RegionSize +33 >= mem_array[i].low) {
+				TraceFile << "first if";
+				todo = 1;
+				index = i;
+				break;
+			}
+		}
+		if (todo) {
+			TraceFile << "Second if \n";
+			mem_array[index].name = "hFree";
+			mem_array[index].unloaded = 1;
+		}
+	}
+	TraceFile << "HeapFree \n";
+}
+
+VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
+	TraceFile << "Before heapReAlloc \n";
+	int seen = 0;
+	int index;
+	
+	if (img_counter < 100) {
+		for (int i = 0; i < img_counter; i++) {
+			if ((int)lpMem < mem_array[i].high && (int)lpMem >= mem_array[i].low) {
+				seen = 1;
+				index = i;
+				//salva indice ed id ed aggiorna quello vecchio.
+				//se non è contenuto nel mio array, devo solo aggiungere la nuova regione
+				break;
+			}
+		}
+		if (seen) {// aggiorna vecchio, inserisci nuovo
+			mem_array[index].unloaded = 1;
+		}
+	}
+}
+
+VOID hReAllocA(ADDRINT ret) {
+	TraceFile << "After heapReAlloc \n";
+	int todo = 1;
+	W::MEMORY_BASIC_INFORMATION memInfo;
+	if (img_counter < 100) {
+		for (int i = 0; i < img_counter; i++) {
+			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
+				todo = 0;
+				//salva indice ed id ed aggiorna quello vecchio.
+				//se non è contenuto nel mio array, devo solo aggiungere la nuova regione
+				break;
+			}
+		}
+		if (todo) {// aggiorna vecchio, inserisci nuovo
+			W::VirtualQuery((W::LPCVOID)ret, &memInfo, sizeof(memInfo));
+			int mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].id = img_counter;
+			mem_array[img_counter].high = mem_reg - 1;
+			mem_array[img_counter].low = (int)memInfo.BaseAddress;
+			mem_array[img_counter].name = "hReAlloc";
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].pagesType = memInfo.Type;
+			mem_array[img_counter].unloaded = 0;
+			img_counter++;
+		}
+	}
+}
+
+
 VOID MemAlloc(IMG img, VOID *v) {
-	//CoTaskMemAlloc  GlobalAlloc   HeapAlloc   LocalAlloc	malloc		new   VirtualAlloc
-	//const char* names[] = { "VirtualQuery", "VirtualQueryEx", "CoTaskMemAlloc", "GlobalAlloc", "HeapAlloc","LocalAlloc", "malloc", "new", "VirtualAlloc" };
 	fMap.insert(std::pair<std::string, int>("VirtualQuery", VirtualQuery_INDEX));
 	fMap.insert(std::pair<std::string, int>("VirtualQueryEx", VirtualQueryEx_INDEX));
 	fMap.insert(std::pair<std::string, int>("CoTaskMemAlloc", CoTaskMemAlloc_INDEX));
@@ -609,6 +679,8 @@ VOID MemAlloc(IMG img, VOID *v) {
 	fMap.insert(std::pair<std::string, int>("malloc", malloc_INDEX));
 	fMap.insert(std::pair<std::string, int>("new", new_INDEX)); // wierd
 	fMap.insert(std::pair<std::string, int>("VirtualAlloc", VirtualAlloc_INDEX));
+	fMap.insert(std::pair<std::string, int>("HeapReAlloc", HeapReAlloc_INDEX));
+	fMap.insert(std::pair<std::string, int>("HeapFree", HeapFree_INDEX));
 
 
 	for (std::map<string, int>::iterator it = fMap.begin(),
@@ -703,13 +775,40 @@ VOID MemAlloc(IMG img, VOID *v) {
 					RTN_Close(rtn);
 				}
 				break;
+			case(HeapReAlloc_INDEX):
+				if (RTN_Valid(rtn)) {
+					RTN_Open(rtn);
+					//function to unload reallocated heaps
+					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 2, 
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 3,
+						IARG_END); 
+					//function to store information about reallocated heaps
+					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)hReAllocA,
+							IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
+					RTN_Close(rtn);
+				}
+				break;			
+				case(HeapFree_INDEX):
+					if (RTN_Valid(rtn)) {
+						RTN_Open(rtn);
+						//function to retrive VirtualAlloc  return value	
+						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)hFree,
+							IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+							IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
+							IARG_FUNCARG_ENTRYPOINT_VALUE, 2, IARG_END);
+						RTN_Close(rtn);
+					}
+					break;
 
 			}
 		}
 	}
 }
 /********************************************************************/
-/**************************Instrumentations*******************/
+/**************************Instrumentations**************************/
 /********************************************************************/
 VOID parse_funcsyms(IMG img, VOID *v) {
 	/*
@@ -727,10 +826,10 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	}
 	TraceFile<< "HeapCompatibilityInformation is: "<< HeapInformation << " \n";
 	*/
-	// Load ntdll dynamically
+	/* Load ntdll dynamically
 	NtQueryVirtualMemory = (_NtQueryVirtualMemory)GetLibraryProcAddress("ntdll.dll", "NtQueryVirtualMemory");
 	W::HANDLE curProc = W::GetCurrentProcess();
-	PhpEnumGenericMappedFilesAndImages(curProc);
+	PhpEnumGenericMappedFilesAndImages(curProc);*/
 	if (!IMG_Valid(img)) return;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
@@ -742,7 +841,7 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	mem_array[img_counter].protection = memInfo.Protect;
 	mem_array[img_counter].pagesType = memInfo.Type;
 	mem_array[img_counter].unloaded = 0;
-	TraceFile << "img: " << mem_array[img_counter].name << " is loaded  \n";
+	//TraceFile << "img: " << mem_array[img_counter].name << " is loaded  \n";
 	img_counter++;
 	//instrumentVQ(img, 0);
 	MemAlloc(img, 0);
@@ -750,19 +849,14 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 
 VOID ImageUnload(IMG img, VOID* v) {
 	int index = 0;
-	TraceFile << "********************************************* \n";
-	for (int i = 0; i < img_counter; i++) {
-		TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
-	}
-/*
 	for (int i = 0; i < img_counter; i++) {
 		if (IMG_Id(img)-1 == mem_array[i].id) {
 			mem_array[i].unloaded = 1;
 			index = i;
-			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
+			//TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
 		}
 	}
-	TraceFile << "img: " << mem_array[index].name << " is unloaded  \n";*/
+	//TraceFile << "img: " << mem_array[index].name << " is unloaded  \n";
 }
 
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
@@ -777,6 +871,10 @@ VOID Fini(INT32 code, VOID* v)
 {
 	if (TraceFile.is_open())
 	{
+		TraceFile << "************************************* \n";
+		for (int i = 0; i < img_counter; i++) {
+			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " is: " <<mem_array[i].unloaded <<" \n";
+		}
 		TraceFile.close();
 	}
 }
