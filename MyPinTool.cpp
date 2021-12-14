@@ -130,7 +130,7 @@ W::PVOID GetLibraryProcAddress(W::PSTR LibraryName, W::PSTR ProcName)
 {
 	return W::GetProcAddress(W::GetModuleHandleA(LibraryName), ProcName);
 }
-int long PhGetProcessMappedFileName( _In_ W::HANDLE ProcessHandle,  _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName){
+int long PhGetProcessMappedFileName(_In_ W::HANDLE ProcessHandle, _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName) {
 	int long status;
 	W::SIZE_T bufferSize;
 	W::SIZE_T returnLength;
@@ -239,7 +239,7 @@ VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
 				continue;
 			}*/
 
-			if ((PhGetProcessMappedFileName( ProcessHandle, allocationBase, fileName)))
+			if ((PhGetProcessMappedFileName(ProcessHandle, allocationBase, fileName)))
 			{
 				continue;
 			}
@@ -413,7 +413,7 @@ VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of
 //function to retrive VirtualQuery return value	
 VOID VQAfter(ADDRINT ret, IMG img) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQ;
-	TraceFile << "Return value of VirtualQuery: " << result->BaseAddress << " \n";
+	TraceFile << "Return value of VirtualQuery: " << (int)result->BaseAddress << " \n";
 }
 VOID VQExAfter(ADDRINT ret) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
@@ -431,8 +431,8 @@ VOID VQExAfter(ADDRINT ret) {
 /********************************************************************/
 /****************************HEAPS**********************************/
 /********************************************************************/
-VOID CTMAAfter(ADDRINT ret, IMG img) {
-	CTMAlloc =  ret;
+VOID CTMAAfter(ADDRINT ret) {
+	CTMAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	if (img_counter < 100) {
@@ -485,7 +485,7 @@ VOID GAfter(ADDRINT ret, IMG img) {
 	}
 	TraceFile << "Return value of  GlobalAlloc :" << GAlloc << " \n";
 }
-VOID HAAfter(ADDRINT ret, IMG img) {
+VOID HAAfter(ADDRINT ret) {
 	HAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
@@ -512,7 +512,7 @@ VOID HAAfter(ADDRINT ret, IMG img) {
 	}
 	TraceFile << "Return value of  HeapAlloc :" << HAlloc << " \n";
 }
-VOID LAAfter(ADDRINT ret, IMG img) {
+VOID LAAfter(ADDRINT ret) {
 	LAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
@@ -539,7 +539,7 @@ VOID LAAfter(ADDRINT ret, IMG img) {
 	}
 	TraceFile << "Return value of  LocalAlloc :" << LAlloc << " \n";
 }
-VOID MAAfter(ADDRINT ret, VOID*  rtn) {// still have to implement the unload of dynamic memory
+VOID MAAfter(ADDRINT ret) {// still have to implement the unload of dynamic memory
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	mAlloc = ret;
@@ -551,18 +551,19 @@ VOID MAAfter(ADDRINT ret, VOID*  rtn) {// still have to implement the unload of 
 			}
 		}
 		if (todo) {
-		W::VirtualQuery((W::LPCVOID)ret, &memInfo, sizeof(memInfo));
-		int mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
-		mem_array[img_counter].protection = memInfo.Protect;
-		mem_array[img_counter].id = img_counter;
-		mem_array[img_counter].high = mem_reg - 1;
-		mem_array[img_counter].low = (int)memInfo.BaseAddress;
-		mem_array[img_counter].name = "MallocResult";
-		mem_array[img_counter].protection = memInfo.Protect;
-		mem_array[img_counter].pagesType = memInfo.Type;
-		mem_array[img_counter].unloaded = 0;
-		TraceFile << "Return value of  malloc :" << mAlloc << " \n";
-		img_counter++;
+			W::VirtualQuery((W::LPCVOID)ret, &memInfo, sizeof(memInfo));
+			int mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].id = img_counter;
+			mem_array[img_counter].high = mem_reg - 1;
+			mem_array[img_counter].low = (int)memInfo.BaseAddress;
+			mem_array[img_counter].name = "Malloc Result";
+			mem_array[img_counter].protection = memInfo.Protect;
+			mem_array[img_counter].pagesType = memInfo.Type;
+			mem_array[img_counter].unloaded = 0;
+			TraceFile << "Return value of  malloc :" << (int) ret << " \n";
+			TraceFile << "mem_array[img_counter].low " << mem_array[img_counter].low << " mem_array[img_counter].high " << mem_array[img_counter].high;
+			img_counter++;
 		}
 	}
 }
@@ -594,15 +595,21 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	TraceFile << " return value of  VirtualAlloc :" << VAlloc << " \n";
 }
 VOID hFree(W::HANDLE hHeap, W::DWORD dwFlags, W::LPVOID lpMem) {
-	TraceFile << "HeapFree " << lpMem<<" \n";
+	TraceFile << "HeapFree " << (int)lpMem << " \n";
+	W::MEMORY_BASIC_INFORMATION memInfo;
 	int todo = 0;
 	int index = 0;
-	W::MEMORY_BASIC_INFORMATION memInfo;
-	W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
+	//W::MEMORY_BASIC_INFORMATION memInfo;
+	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
 	if (img_counter < 100) {
+		W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
+		TraceFile << " free base address " << (int)memInfo.BaseAddress << "free max address " << (int)memInfo.BaseAddress + (int)memInfo.RegionSize - 1 << " \n";
+		//TraceFile << "***************************** \n" ;
 		for (int i = 0; i < img_counter; i++) {
-			TraceFile << "in for ";
-			if ( (int)memInfo.BaseAddress < mem_array[i].high && (int)memInfo.RegionSize +33 >= mem_array[i].low) {
+			//TraceFile <<  "mem array high: " <<mem_array[i].high << " \n";
+			//TraceFile << "meminfo base: " << (int)memInfo.BaseAddress << " \n";
+			//TraceFile << "mem array low: " << mem_array[i].low << " \n";
+			if ((int)memInfo.BaseAddress + (int)memInfo.RegionSize-1 <= mem_array[i].high && (int)memInfo.BaseAddress >= mem_array[i].low) {
 				TraceFile << "first if";
 				todo = 1;
 				index = i;
@@ -622,7 +629,7 @@ VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
 	TraceFile << "Before heapReAlloc \n";
 	int seen = 0;
 	int index;
-	
+
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)lpMem < mem_array[i].high && (int)lpMem >= mem_array[i].low) {
@@ -692,6 +699,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 			switch (index) {
 			case(VirtualQuery_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to parse VirtualQuery arguments
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)ArgVQ,
@@ -706,6 +714,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(VirtualQueryEx_INDEX):
 				if (RTN_Valid(rtn)) {// does not work properly need to reconfigure for VQEx using function for VQ
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to parse VirtualQueryEx arguments
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)ArgVQEx,
@@ -720,6 +729,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(CoTaskMemAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive CoTaskMemAlloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)CTMAAfter,
@@ -729,6 +739,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(GlobalAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive GlobalAlloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)GAfter,
@@ -738,6 +749,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(HeapAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive HeapAlloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)HAAfter,
@@ -747,6 +759,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(LocalAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive LocalAlloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)LAAfter,
@@ -756,18 +769,21 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(malloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive malloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)MAAfter,
-						IARG_FUNCRET_EXITPOINT_VALUE, IARG_PTR , rtn, IARG_END);
+						IARG_FUNCRET_EXITPOINT_VALUE, IARG_PTR, rtn, IARG_END);
 					RTN_Close(rtn);
 				}
 				break;
-			//case(new_INDEX):
-				//do stuff
-				//break;
+				//case(new_INDEX):
+					//TraceFile << func_name << " \n";
+					//do stuff
+					//break;
 			case(VirtualAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to retrive VirtualAlloc  return value	
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)VAAfter,
@@ -777,31 +793,33 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(HeapReAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to unload reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 2, 
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 3,
-						IARG_END); 
+						IARG_END);
 					//function to store information about reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)hReAllocA,
-							IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
+						IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
 					RTN_Close(rtn);
 				}
-				break;			
-				case(HeapFree_INDEX):
-					if (RTN_Valid(rtn)) {
-						RTN_Open(rtn);
-						//function to retrive VirtualAlloc  return value	
-						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)hFree,
-							IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
-							IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
-							IARG_FUNCARG_ENTRYPOINT_VALUE, 2, IARG_END);
-						RTN_Close(rtn);
-					}
-					break;
+				break;
+			case(HeapFree_INDEX):
+				if (RTN_Valid(rtn)) {
+					//TraceFile << func_name << " \n";
+					RTN_Open(rtn);
+					//function to retrive VirtualAlloc  return value	
+					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hFree,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 2, IARG_END);
+					RTN_Close(rtn);
+				}
+				break;
 
 			}
 		}
@@ -850,7 +868,7 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 VOID ImageUnload(IMG img, VOID* v) {
 	int index = 0;
 	for (int i = 0; i < img_counter; i++) {
-		if (IMG_Id(img)-1 == mem_array[i].id) {
+		if (IMG_Id(img) - 1 == mem_array[i].id) {
 			mem_array[i].unloaded = 1;
 			index = i;
 			//TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " \n";
@@ -873,7 +891,8 @@ VOID Fini(INT32 code, VOID* v)
 	{
 		TraceFile << "************************************* \n";
 		for (int i = 0; i < img_counter; i++) {
-			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " is: " <<mem_array[i].unloaded <<" \n";
+			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " is: " << mem_array[i].unloaded << " \n";
+			TraceFile << " img high " << mem_array[i].high << " img low " << mem_array[i].low << "\n";
 		}
 		TraceFile.close();
 	}
