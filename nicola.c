@@ -7,18 +7,26 @@ typedef struct _configurations_t {
     int id, parent_id;
     int epoch, born_in_epoch;
 } configurations_t;
-/*void CreateFileMappingEx(){
-	LPCWSTR file_path = "C:\\pin-3.19\\pinterest.txt";
-		DWORD timebegin = ::timeGetTime();
-		HANDLE fp = CreateFile (file_path,//Enter the file to be copied here src
-		GENERIC_READ | GENERIC_WRITE,
+void CreateFileMappingEx(){
+		LPCSTR file_path = "C:/pin-3.19/pinterest.txt";
+		HANDLE hFile = CreateFile (file_path,//Enter the file to be copied here src
+		GENERIC_READ|GENERIC_WRITE,
+		FILE_SHARE_READ,
 		NULL,
-		NULL,
-		OPEN_EXISTING,
+		CREATE_ALWAYS,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL);
+
+		HANDLE bucchi = CreateFileMappingA(
+			hFile,
+			NULL,
+			PAGE_EXECUTE_READ,
+			0,
+			0,
+			NULL
+			);
 }
-*/
+
 int main(){
 	void* r;
 	//printf("Hello world");
@@ -31,5 +39,5 @@ int main(){
 	//printf("r: %d \n", r );
 	HeapFree(hHeap, 0, pArr);
 	HeapDestroy(hHeap);
-	//CreateFileMappingEx();
+	CreateFileMappingEx();
 }

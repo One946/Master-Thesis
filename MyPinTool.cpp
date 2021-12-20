@@ -688,6 +688,7 @@ W::DWORD flProtect, W::DWORD dwMaximumSizeHigh,W::DWORD dwMaximumSizeLow, W::LPC
 }
 VOID CFMappingA(W::HANDLE hFile, W::LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
 	W::DWORD flProtect, W::DWORD dwMaximumSizeHigh, W::DWORD dwMaximumSizeLow, W::LPCSTR lpName) {
+	TraceFile << "HANDLE TO FILE: " << hFile << " \n";
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
