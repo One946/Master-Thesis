@@ -354,7 +354,7 @@ VOID findStacks(CONTEXT *ctxt) {
 	W::VirtualQuery((W::LPCVOID)currentSP, &memInfo, sizeof(memInfo));
 	base = (int)memInfo.BaseAddress;
 	max = (int)memInfo.RegionSize + (int)memInfo.BaseAddress - 1;
-	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
+	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)currentSP < mem_array[i].high && (int)currentSP >= mem_array[i].low) {
 				TraceFile << "checking todo";
@@ -404,11 +404,6 @@ VOID VQExAfter(ADDRINT ret) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
 	for (int i = 0; i < 50; i++) {
 		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
-			/*TraceFile << "\n spotted an address contained in a module VIRTUALQUERYEX";
-			TraceFile << "\nThe module is: " << mem_array[i].name;
-			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
-			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
-			TraceFile << "\n the id of the image is: " << mem_array[i].id;*/
 		}
 	}
 }
@@ -417,14 +412,16 @@ VOID VQExAfter(ADDRINT ret) {
 /****************************HEAPS**********************************/
 /********************************************************************/
 VOID CTMAAfter(ADDRINT ret) {
-	CTMAlloc = ret;
+	CTMAlloc = ret; // non serve
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
+				if (!mem_array[i].unloaded){
 				todo = 0;
 				break;
+				}
 			}
 		}
 		if (todo) {
@@ -450,8 +447,10 @@ VOID GAfter(ADDRINT ret, IMG img) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				todo = 0;
-				break;
+				if (!mem_array[i].unloaded) {
+					todo = 0;
+					break;
+				}
 			}
 		}
 		if (todo) {
@@ -477,8 +476,10 @@ VOID HAAfter(ADDRINT ret) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				todo = 0;
-				break;
+				if (!mem_array[i].unloaded) {
+					todo = 0;
+					break;
+				}
 			}
 		}
 		if (todo) {
@@ -504,8 +505,10 @@ VOID LAAfter(ADDRINT ret) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				todo = 0;
-				break;
+				if (!mem_array[i].unloaded) {
+					todo = 0;
+					break;
+				}
 			}
 		}
 		if (todo) {
@@ -531,8 +534,10 @@ VOID MAAfter(ADDRINT ret) {// still have to implement the unload of dynamic memo
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				todo = 0;
-				break;
+				if (!mem_array[i].unloaded) {
+					todo = 0;
+					break;
+				}
 			}
 		}
 		if (todo) {
@@ -547,7 +552,7 @@ VOID MAAfter(ADDRINT ret) {// still have to implement the unload of dynamic memo
 			mem_array[img_counter].pagesType = memInfo.Type;
 			mem_array[img_counter].unloaded = 0;
 			TraceFile << "Return value of  malloc :" << (int)ret << " \n";
-			TraceFile << "mem_array[img_counter].low " << mem_array[img_counter].low << " mem_array[img_counter].high " << mem_array[img_counter].high;
+			TraceFile << "mem_array[img_counter].low " << mem_array[img_counter].low << " mem_array[img_counter].high " << mem_array[img_counter].high << " \n";
 			img_counter++;
 		}
 	}
@@ -559,8 +564,10 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				todo = 0;
-				break;
+				if (!mem_array[i].unloaded) {
+					todo = 0;
+					break;
+				}
 			}
 		}
 		if (todo) {
@@ -580,16 +587,17 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	TraceFile << " return value of  VirtualAlloc :" << VAlloc << " \n";
 }
 VOID hFree(W::HANDLE hHeap, W::DWORD dwFlags, W::LPVOID lpMem) {
-	TraceFile << "HeapFree " << (int)lpMem << " \n";
+	
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	int todo = 0;
 	int index = 0;
-	//W::MEMORY_BASIC_INFORMATION memInfo;
-	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
+	W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
+	TraceFile << "HeapFree " << (int)lpMem << " \n";
+	TraceFile << "meminfo base address: " << (int)memInfo.BaseAddress << "memInfo.BaseAddress + memInfo.RegionSize - 1 " << (int)memInfo.BaseAddress + memInfo.RegionSize - 1 << " \n";
 	if (img_counter < 100) {
 		//W::VirtualQuery((W::LPCVOID)hHeap, &memInfo, sizeof(memInfo));
 		for (int i = 0; i < img_counter; i++) {
-			if ((int)hHeap -1<= mem_array[i].high && (int)hHeap >= mem_array[i].low) {
+			if ((int)memInfo.BaseAddress<= mem_array[i].high && (int)memInfo.BaseAddress + memInfo.RegionSize - 1 >= mem_array[i].low) {
 				TraceFile << "first if	\n";
 				todo = 1;
 				index = i;
@@ -620,7 +628,9 @@ VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
 				break;
 			}
 		}
+
 		if (seen) {// aggiorna vecchio, inserisci nuovo
+			TraceFile << "mem_array[img_counter].low: " << mem_array[index].low << " mem_array[img_counter].high: " << mem_array[index].high << " \n";
 			mem_array[index].unloaded = 1;
 			mem_array[index].name.append(" hReAlloc");
 		}
@@ -628,7 +638,6 @@ VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
 }
 
 VOID hReAllocA(ADDRINT ret) {
-	TraceFile << "After heapReAlloc: "<< (int) ret<< " \n";
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	if (img_counter < 100) {
@@ -651,6 +660,8 @@ VOID hReAllocA(ADDRINT ret) {
 			mem_array[img_counter].protection = memInfo.Protect;
 			mem_array[img_counter].pagesType = memInfo.Type;
 			mem_array[img_counter].unloaded = 0;
+			TraceFile << "After heapReAlloc: " << (int)ret << " \n";
+			TraceFile << "mem_array[img_counter].low: " << mem_array[img_counter].low << " mem_array[img_counter].high: " << mem_array[img_counter].high << " \n";
 			img_counter++;
 		}
 	}
@@ -839,7 +850,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(HeapReAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
-					TraceFile << func_name << " \n";
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to unload reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,
@@ -856,7 +867,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(realloc_INDEX):
 				if (RTN_Valid(rtn)) {
-					TraceFile << func_name << " \n";
+					//TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to unload reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,

@@ -31,13 +31,14 @@ int main(){
 	void* r;
 	//printf("Hello world");
 	HANDLE hHeap = HeapCreate(HEAP_NO_SERIALIZE, 10, 15);
-	int* pArr = (int* ) HeapAlloc(hHeap, 0, sizeof(int) * 30);	
-	//printf("pArr before : %x \n", pArr );
-	//printf("r: %x \n", r );
+	void* pArr = (int* ) HeapAlloc(hHeap, 0, sizeof(int) * 30);	
+	//printf("pArr before : %d \n", pArr );
+	//printf("r: %d \n", r );
 	r = HeapReAlloc(hHeap, HEAP_NO_SERIALIZE, pArr,1000);
 	//printf("pArr after: %d \n", pArr );
 	//printf("r: %d \n", r );
-	HeapFree(hHeap, 0, pArr);
-	HeapDestroy(hHeap);
-	CreateFileMappingEx();
+	//printf("hFree: %d \n", HeapFree(hHeap, 0, r));
+	HeapFree(hHeap, 0, r);
+	//HeapDestroy(hHeap);
+	//CreateFileMappingEx();
 }
