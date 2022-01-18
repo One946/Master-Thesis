@@ -50,7 +50,8 @@ enum {
 	realloc_INDEX,
 	HeapFree_INDEX,
 	CreateFileMappingW_INDEX,
-	CreateFileMappingA_INDEX
+	CreateFileMappingA_INDEX,
+	CreateFileA_INDEX
 };
 typedef struct mem_regions_t {
 	int id;
@@ -85,7 +86,8 @@ typedef enum _MEMORY_INFORMATION_CLASS
 	MaxMemoryInfoClass
 } MEMORY_INFORMATION_CLASS;
 
-typedef int long(NTAPI* _NtQueryVirtualMemory)(
+typedef int long(NTAPI* _NtQueryVirtualMemory)( //since NTSTATUS is actually a typedef to LONG. The workaround was to replace 
+	//the function return type from NTSTATUS to LONG(but ideally includes should be fixed so that NTSTATUS is resoved).
 	W::HANDLE                   ProcessHandle,
 	W::PVOID                    BaseAddress,
 	MEMORY_INFORMATION_CLASS MemoryInformationClass,
@@ -96,14 +98,7 @@ typedef int long(NTAPI* _NtQueryVirtualMemory)(
 // dynamically imported functions
 _NtQueryVirtualMemory NtQueryVirtualMemory;
 
-/* https://stackoverflow.com/questions/28859456/function-returning-function-is-not-allowed-in-typedef-foobar
-typedef int long(NTAPI* _NtQueryVirtualMemory)( //since NTSTATUS is actually a typedef to LONG. The workaround was to replace the function return type from NTSTATUS to LONG(but ideally includes should be fixed so that NTSTATUS is resoved).
-	W::HANDLE                   ProcessHandle,
-	W::PVOID                    BaseAddress,
-	W::PVOID                    MemoryInformation,
-	W::SIZE_T                   MemoryInformationLength,
-	W::PSIZE_T                  ReturnLength
-	);/*
+// https://stackoverflow.com/questions/28859456/function-returning-function-is-not-allowed-in-typedef-foobar
 /****************************MAPPED FILES******************************************/
 //*******************************************************************
 //GLOBAL VARIABLES
@@ -133,50 +128,52 @@ W::PVOID GetLibraryProcAddress(W::PSTR LibraryName, W::PSTR ProcName)
 {
 	return W::GetProcAddress(W::GetModuleHandleA(LibraryName), ProcName);
 }
-int long PhGetProcessMappedFileName(_In_ W::HANDLE ProcessHandle, _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName) {
+int long PhGetProcessMappedFileName( _In_ W::HANDLE ProcessHandle, _In_ W::PVOID BaseAddress, _Out_ wchar_t *FileName) {
 	int long status;
-	W::SIZE_T bufferSize;
-	W::SIZE_T returnLength;
-	void* buffer; //W::PUNICODE_STRING
+	W::SIZE_T Length=0;
+	//W::SIZE_T MaximumLength;
+	W::PUNICODE_STRING ustring; //W::PUNICODE_STRING
+	//W::PWSTR buffer;
 
-	returnLength = 0;
-	bufferSize = 0x100;
-	buffer = malloc(bufferSize);
+	ustring->Length = 0;
+	ustring->MaximumLength = 0x500;
+	ustring->Buffer = (W::PWSTR)   malloc(ustring->MaximumLength);
 
 	status = NtQueryVirtualMemory(
 		ProcessHandle,
 		BaseAddress,
 		MemoryMappedFilenameInformation,
-		buffer,
-		bufferSize,
-		&returnLength
+		ustring->Buffer,
+		ustring->MaximumLength,
+		&Length
 	);
 
-	if (status == 0x80000005 && returnLength > 0) // returnLength > 0 required for MemoryMappedFilename on Windows 7 SP1 (dmex)
+	ustring->Length = Length;
+
+	if (status == 0x80000005 && Length > 0) // returnLength > 0 required for MemoryMappedFilename on Windows 7 SP1 (dmex)
 	{
-		free(buffer);
-		bufferSize = returnLength;
-		buffer = malloc(bufferSize);
+		free(ustring->Buffer);
+		ustring->MaximumLength = Length;
+		ustring->Buffer = (W::PWSTR) malloc(ustring->MaximumLength);
 
 		status = NtQueryVirtualMemory(
 			ProcessHandle,
 			BaseAddress,
 			MemoryMappedFilenameInformation,
-			buffer,
-			bufferSize,
-			&returnLength
+			ustring->Buffer,
+			ustring->MaximumLength,
+			&Length
 		);
-	}
 
-	if (!(status))
+		ustring->Length = Length;
+	}
+	if (status!=0)
 	{
-		free(buffer);
+		free(ustring->Buffer);
 		return status;
 	}
-
-	//swprintf(FileName, 64, L"%s", buffer->Buffer);
-	free(buffer);
-
+	swprintf(FileName, 64, L"%s", ustring->Buffer);
+	free(ustring->Buffer);
 	return status;
 }
 
@@ -184,16 +181,17 @@ VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
 	W::BOOLEAN querySucceeded;
 	W::PVOID baseAddress;
 	W::MEMORY_BASIC_INFORMATION basicInfo;
-
 	baseAddress = (W::PVOID)0;
-	if ((NtQueryVirtualMemory(
+
+	int long status = (NtQueryVirtualMemory(
 		ProcessHandle,
 		baseAddress,
 		MemoryBasicInformation,
 		&basicInfo,
 		sizeof(W::MEMORY_BASIC_INFORMATION),
 		NULL
-	)))
+	));
+	if (status!=0)
 	{
 		return;
 	}
@@ -217,38 +215,42 @@ VOID PhpEnumGenericMappedFilesAndImages(W::HANDLE ProcessHandle) {
 			// Find the total allocation size.
 			allocationBase = basicInfo.AllocationBase;
 			allocationSize = 0;
-			do{
+			do {
 				baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
 				allocationSize += basicInfo.RegionSize;
-				if ((NtQueryVirtualMemory(ProcessHandle, baseAddress, MemoryBasicInformation, &basicInfo, sizeof(W::MEMORY_BASIC_INFORMATION), NULL)))
+
+				status = (NtQueryVirtualMemory(ProcessHandle, baseAddress, MemoryBasicInformation, &basicInfo, sizeof(W::MEMORY_BASIC_INFORMATION), NULL));
+				if (status!=0)
 				{
 					querySucceeded = FALSE;
 					break;
 				}
-			}while (basicInfo.AllocationBase == allocationBase);
-
-			if ((PhGetProcessMappedFileName(ProcessHandle, allocationBase, fileName))){
-				continue;
-			}
-			wprintf(L"Filename: %s\n", fileName);
+			} while (basicInfo.AllocationBase == allocationBase);
+			int long mapped = PhGetProcessMappedFileName(ProcessHandle, allocationBase, &fileName[64]);
+			//if (mapped!=0) {
+			//continue; 
+			//}
+			printf("%x \n", mapped);
+			wprintf(L"Filename AAAAAAAAAAAAAAAAAAAAAAAAAAAA: %ls\n", fileName);
 			char* type_s = (basicInfo.Type == MEM_MAPPED) ? "mapped" : "image";
-			if(type_s=="mapped"){
-			printf("Base, size, type: %d %d %s\n", allocationBase, allocationSize, type_s);
-			}
+			printf	("Base, size, type: %d %d %s\n", allocationBase, allocationSize, type_s);
 		}
-		else{
+		else {
 			baseAddress = PTR_ADD_OFFSET(baseAddress, basicInfo.RegionSize);
-			if ((NtQueryVirtualMemory(
+			status = (NtQueryVirtualMemory(
 				ProcessHandle,
 				baseAddress,
 				MemoryBasicInformation,
 				&basicInfo,
 				sizeof(W::MEMORY_BASIC_INFORMATION),
 				NULL
-			)))
-			{
+			));
+
+			TraceFile << "status 4 " << (void*)status << "\n";
+			//if (status!=0)
+			//{
 				querySucceeded = FALSE;
-			}
+			//}
 		}
 	}
 }
@@ -354,7 +356,7 @@ VOID findStacks(CONTEXT *ctxt) {
 	W::VirtualQuery((W::LPCVOID)currentSP, &memInfo, sizeof(memInfo));
 	base = (int)memInfo.BaseAddress;
 	max = (int)memInfo.RegionSize + (int)memInfo.BaseAddress - 1;
-	if (img_counter < 100) {
+	if (img_counter < 100) {// still not working, i have to figure out how to add regions once while checking the whole array
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)currentSP < mem_array[i].high && (int)currentSP >= mem_array[i].low) {
 				TraceFile << "checking todo";
@@ -404,6 +406,11 @@ VOID VQExAfter(ADDRINT ret) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
 	for (int i = 0; i < 50; i++) {
 		if ((int)result->AllocationBase >= mem_array[i].low && (int)result->AllocationBase < mem_array[i].high) {
+			/*TraceFile << "\n spotted an address contained in a module VIRTUALQUERYEX";
+			TraceFile << "\nThe module is: " << mem_array[i].name;
+			TraceFile << "\n max address of the pages belonging to the image is: " << mem_array[i].high;
+			TraceFile << "\n base address of the pages belonging to the image is: " << mem_array[i].low;
+			TraceFile << "\n the id of the image is: " << mem_array[i].id;*/
 		}
 	}
 }
@@ -412,16 +419,14 @@ VOID VQExAfter(ADDRINT ret) {
 /****************************HEAPS**********************************/
 /********************************************************************/
 VOID CTMAAfter(ADDRINT ret) {
-	CTMAlloc = ret; // non serve
+	CTMAlloc = ret;
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded){
 				todo = 0;
 				break;
-				}
 			}
 		}
 		if (todo) {
@@ -447,10 +452,8 @@ VOID GAfter(ADDRINT ret, IMG img) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded) {
-					todo = 0;
-					break;
-				}
+				todo = 0;
+				break;
 			}
 		}
 		if (todo) {
@@ -476,10 +479,8 @@ VOID HAAfter(ADDRINT ret) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded) {
-					todo = 0;
-					break;
-				}
+				todo = 0;
+				break;
 			}
 		}
 		if (todo) {
@@ -505,10 +506,8 @@ VOID LAAfter(ADDRINT ret) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded) {
-					todo = 0;
-					break;
-				}
+				todo = 0;
+				break;
 			}
 		}
 		if (todo) {
@@ -534,10 +533,8 @@ VOID MAAfter(ADDRINT ret) {// still have to implement the unload of dynamic memo
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded) {
-					todo = 0;
-					break;
-				}
+				todo = 0;
+				break;
 			}
 		}
 		if (todo) {
@@ -552,7 +549,7 @@ VOID MAAfter(ADDRINT ret) {// still have to implement the unload of dynamic memo
 			mem_array[img_counter].pagesType = memInfo.Type;
 			mem_array[img_counter].unloaded = 0;
 			TraceFile << "Return value of  malloc :" << (int)ret << " \n";
-			TraceFile << "mem_array[img_counter].low " << mem_array[img_counter].low << " mem_array[img_counter].high " << mem_array[img_counter].high << " \n";
+			TraceFile << "mem_array[img_counter].low " << mem_array[img_counter].low << " mem_array[img_counter].high " << mem_array[img_counter].high;
 			img_counter++;
 		}
 	}
@@ -564,10 +561,8 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	if (img_counter < 100) {
 		for (int i = 0; i < img_counter; i++) {
 			if ((int)ret < mem_array[i].high && (int)ret >= mem_array[i].low) {
-				if (!mem_array[i].unloaded) {
-					todo = 0;
-					break;
-				}
+				todo = 0;
+				break;
 			}
 		}
 		if (todo) {
@@ -587,17 +582,16 @@ VOID VAAfter(ADDRINT ret, IMG img) {
 	TraceFile << " return value of  VirtualAlloc :" << VAlloc << " \n";
 }
 VOID hFree(W::HANDLE hHeap, W::DWORD dwFlags, W::LPVOID lpMem) {
-	
+	TraceFile << "HeapFree " << (int)lpMem << " \n";
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	int todo = 0;
 	int index = 0;
-	W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
-	TraceFile << "HeapFree " << (int)lpMem << " \n";
-	TraceFile << "meminfo base address: " << (int)memInfo.BaseAddress << "memInfo.BaseAddress + memInfo.RegionSize - 1 " << (int)memInfo.BaseAddress + memInfo.RegionSize - 1 << " \n";
+	//W::MEMORY_BASIC_INFORMATION memInfo;
+	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
 	if (img_counter < 100) {
 		//W::VirtualQuery((W::LPCVOID)hHeap, &memInfo, sizeof(memInfo));
 		for (int i = 0; i < img_counter; i++) {
-			if ((int)memInfo.BaseAddress<= mem_array[i].high && (int)memInfo.BaseAddress + memInfo.RegionSize - 1 >= mem_array[i].low) {
+			if ((int)hHeap - 1 <= mem_array[i].high && (int)hHeap >= mem_array[i].low) {
 				TraceFile << "first if	\n";
 				todo = 1;
 				index = i;
@@ -614,7 +608,7 @@ VOID hFree(W::HANDLE hHeap, W::DWORD dwFlags, W::LPVOID lpMem) {
 }
 
 VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
-	TraceFile << "Before heapReAlloc " <<(int) hHeap << " \n";
+	TraceFile << "Before heapReAlloc " << (int)hHeap << " \n";
 	int seen = 0;
 	int index;
 
@@ -628,9 +622,7 @@ VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
 				break;
 			}
 		}
-
 		if (seen) {// aggiorna vecchio, inserisci nuovo
-			TraceFile << "mem_array[img_counter].low: " << mem_array[index].low << " mem_array[img_counter].high: " << mem_array[index].high << " \n";
 			mem_array[index].unloaded = 1;
 			mem_array[index].name.append(" hReAlloc");
 		}
@@ -638,6 +630,7 @@ VOID hReAllocB(ADDRINT hHeap, ADDRINT dwFlags, ADDRINT lpMem, ADDRINT dwBytes) {
 }
 
 VOID hReAllocA(ADDRINT ret) {
+	TraceFile << "After heapReAlloc: " << (int)ret << " \n";
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	if (img_counter < 100) {
@@ -660,15 +653,13 @@ VOID hReAllocA(ADDRINT ret) {
 			mem_array[img_counter].protection = memInfo.Protect;
 			mem_array[img_counter].pagesType = memInfo.Type;
 			mem_array[img_counter].unloaded = 0;
-			TraceFile << "After heapReAlloc: " << (int)ret << " \n";
-			TraceFile << "mem_array[img_counter].low: " << mem_array[img_counter].low << " mem_array[img_counter].high: " << mem_array[img_counter].high << " \n";
 			img_counter++;
 		}
 	}
 }
 
 VOID CFMappingW(W::HANDLE hFile, W::LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
-W::DWORD flProtect, W::DWORD dwMaximumSizeHigh,W::DWORD dwMaximumSizeLow, W::LPCWSTR lpName){
+	W::DWORD flProtect, W::DWORD dwMaximumSizeHigh, W::DWORD dwMaximumSizeLow, W::LPCWSTR lpName) {
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
@@ -699,7 +690,7 @@ W::DWORD flProtect, W::DWORD dwMaximumSizeHigh,W::DWORD dwMaximumSizeLow, W::LPC
 }
 VOID CFMappingA(W::HANDLE hFile, W::LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
 	W::DWORD flProtect, W::DWORD dwMaximumSizeHigh, W::DWORD dwMaximumSizeLow, W::LPCSTR lpName) {
-	TraceFile << "HANDLE TO FILE: " << hFile << " \n";
+	//TraceFile << "HANDLE TO FILE: " << hFile << " \n";
 	int todo = 1;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//W::VirtualQuery((W::LPCVOID)lpMem, &memInfo, sizeof(memInfo));
@@ -728,7 +719,9 @@ VOID CFMappingA(W::HANDLE hFile, W::LPSECURITY_ATTRIBUTES lpFileMappingAttribute
 	}
 	TraceFile << "CFMappingA \n";
 }
-
+VOID CFMappingAAfter(W::HANDLE ret) {
+	TraceFile << "HANDLE TO FILE: " << ret << " \n";
+}
 
 VOID MemAlloc(IMG img, VOID *v) {
 	fMap.insert(std::pair<std::string, int>("VirtualQuery", VirtualQuery_INDEX));
@@ -745,7 +738,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 	fMap.insert(std::pair<std::string, int>("HeapFree", HeapFree_INDEX));
 	fMap.insert(std::pair<std::string, int>("CreateFileMappingW", CreateFileMappingW_INDEX));
 	fMap.insert(std::pair<std::string, int>("CreateFileMappingA", CreateFileMappingA_INDEX));
-
+	fMap.insert(std::pair<std::string, int>("CreateFileA", CreateFileA_INDEX));
 
 	for (std::map<string, int>::iterator it = fMap.begin(),
 		end = fMap.end(); it != end; ++it) {
@@ -850,7 +843,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(HeapReAlloc_INDEX):
 				if (RTN_Valid(rtn)) {
-					//TraceFile << func_name << " \n";
+					TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to unload reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,
@@ -867,7 +860,7 @@ VOID MemAlloc(IMG img, VOID *v) {
 				break;
 			case(realloc_INDEX):
 				if (RTN_Valid(rtn)) {
-					//TraceFile << func_name << " \n";
+					TraceFile << func_name << " \n";
 					RTN_Open(rtn);
 					//function to unload reallocated heaps
 					RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)hReAllocB,
@@ -903,9 +896,9 @@ VOID MemAlloc(IMG img, VOID *v) {
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 3, 
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 4, 
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 5, 
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 3,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 4,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 5,
 						IARG_END);
 					RTN_Close(rtn);
 				}
@@ -921,8 +914,10 @@ VOID MemAlloc(IMG img, VOID *v) {
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 3,
 						IARG_FUNCARG_ENTRYPOINT_VALUE, 4,
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 5, 
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 5,
 						IARG_END);
+					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)CFMappingAAfter,
+						IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
 					RTN_Close(rtn);
 				}
 				break;
@@ -933,26 +928,49 @@ VOID MemAlloc(IMG img, VOID *v) {
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
-VOID parse_funcsyms(IMG img, VOID *v) {
-	/*
-	W::BOOL bResult;
-	W::HANDLE hHeap;
-	W::ULONG HeapInformation;
-	hHeap = W::GetProcessHeap();
-	bResult = W::HeapQueryInformation(hHeap,
-		W::HeapCompatibilityInformation,
-		&HeapInformation,
-		sizeof(HeapInformation),
-		NULL);
-	if (bResult == FALSE) {
-			TraceFile << "Failed to retrieve heap features with LastError" << W::GetLastError() << ". \n";
+
+//syscalls
+VOID EnumSyscalls() {
+#define MAXSYSCALLS		0x200
+	CHAR* syscallIDs[MAXSYSCALLS] = { 0 };
+	unsigned char *image = (unsigned char *)W::GetModuleHandle("ntdll");
+	W::IMAGE_DOS_HEADER *dos_header = (W::IMAGE_DOS_HEADER *) image;
+	W::IMAGE_NT_HEADERS *nt_headers = (W::IMAGE_NT_HEADERS *)(image + dos_header->e_lfanew);
+	W::IMAGE_DATA_DIRECTORY *data_directory = &nt_headers->
+		OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+	W::IMAGE_EXPORT_DIRECTORY *export_directory = (W::IMAGE_EXPORT_DIRECTORY *)(image + data_directory->VirtualAddress);
+	// RVAs from image base
+	W::DWORD *address_of_names = (W::DWORD*)(image + export_directory->AddressOfNames);
+	W::DWORD *address_of_functions = (W::DWORD*)(image + export_directory->AddressOfFunctions);
+	UINT16 *address_of_name_ordinals = (W::UINT16*)(image + export_directory->AddressOfNameOrdinals);
+	// NumberOfNames can be 0: in that case the module will export by ordinal only 
+	W::DWORD number_of_names = MIN(export_directory->NumberOfFunctions, export_directory->NumberOfNames);
+	size_t ntcalls = 0, zwcalls = 0;
+
+	for (W::DWORD i = 0; i < number_of_names; i++) {
+		// AddressOfNameOrdinals contains the ordinals associated with the function names in AddressOfNames
+		const char *name = (const char *)(image + address_of_names[i]);
+		// AddressOfFunctions points to an array of RVAs of the functions/symbols in the module
+		unsigned char *addr = image + address_of_functions[address_of_name_ordinals[i]];
+		if (!memcmp(name, "Zw", 2) || !memcmp(name, "Nt", 2)) {
+			if (addr[0] == 0xb8 && (addr[5] == 0xb9 || addr[5] == 0x33 || addr[5] == 0xba)) {
+				ADDRINT syscall_number = *(UINT32*)(addr + 1);
+				// by using a map for every Zw/Nt pair we will skip duplicates
+				if (!syscallIDs[syscall_number] || !memcmp(name, "Nt", 2)) {
+					syscallIDs[syscall_number] = strdup(name);
+					//TraceFile<< syscallIDs[syscall_number] << " \n ";
+				}
+			}
+		}
 	}
-	TraceFile<< "HeapCompatibilityInformation is: "<< HeapInformation << " \n";
-	*/
-	// Load ntdll dynamically
-	NtQueryVirtualMemory = (_NtQueryVirtualMemory)GetLibraryProcAddress("ntdll.dll", "NtQueryVirtualMemory");
-	W::HANDLE curProc = W::GetCurrentProcess();
-	PhpEnumGenericMappedFilesAndImages(curProc);
+
+}
+
+VOID sysnum(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std, VOID *v) {
+	TraceFile << "Sysnumb :" << (void*)PIN_GetSyscallNumber(ctxt, std) << " \n";
+}
+
+VOID parse_funcsyms(IMG img, VOID *v) {
 	if (!IMG_Valid(img)) return;
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
@@ -964,10 +982,8 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	mem_array[img_counter].protection = memInfo.Protect;
 	mem_array[img_counter].pagesType = memInfo.Type;
 	mem_array[img_counter].unloaded = 0;
-	//TraceFile << "img: " << mem_array[img_counter].name << " is loaded  \n";
 	img_counter++;
-	//instrumentVQ(img, 0);
-	MemAlloc(img, 0);
+	EnumSyscalls();
 }
 
 VOID ImageUnload(IMG img, VOID* v) {
@@ -976,6 +992,7 @@ VOID ImageUnload(IMG img, VOID* v) {
 		if (IMG_Id(img) - 1 == mem_array[i].id) {
 			mem_array[i].unloaded = 1;
 			index = i;
+			TraceFile << mem_array[i].name << " \n";
 		}
 	}
 }
@@ -1018,8 +1035,15 @@ int main(int argc, char* argv[]) {
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
 	//PIN_AddThreadStartFunction(OnThreadStart, NULL);
-	IMG_AddInstrumentFunction(parse_funcsyms, 0);
-	IMG_AddUnloadFunction(ImageUnload, 0);
+	// Load ntdll dynamically
+	NtQueryVirtualMemory = (_NtQueryVirtualMemory)GetLibraryProcAddress("ntdll.dll", "NtQueryVirtualMemory");
+	W::HANDLE curProc = W::GetCurrentProcess();
+	PhpEnumGenericMappedFilesAndImages(curProc);
+
+
+	//IMG_AddInstrumentFunction(parse_funcsyms, 0);
+	//IMG_AddUnloadFunction(ImageUnload, 0);
+	//PIN_AddSyscallEntryFunction(sysnum, 0);
 	// function to analyze memory access 
 	//INS_AddInstrumentFunction(ValidateMemory, 0);
 	// Register Fini to be called when the application exits
