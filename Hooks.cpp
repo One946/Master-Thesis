@@ -1,5 +1,6 @@
 #include "pin.H"
 #include "HooksHeader.h"
+#include "MemoryHeader.h"
 
 
 namespace W {
@@ -23,8 +24,12 @@ unsigned int  NtMapViewOfSection = 0x000000a8;
 unsigned int  NtUnmapViewOfSection = 0x00000181;
 unsigned int  NtCreateSection = 0x00000054;
 TLS_KEY tls_key;
-#define MAXSYSCALLS		
-CHAR* syscallIDs[MAXSYSCALLS] = { 0 };
+//#define MAXSYSCALLS		
+//CHAR* syscallIDs[MAXSYSCALLS] = { 0 };
+
+#define MAXSYSCALLS	0x200
+CHAR* syscallIDs[MAXSYSCALLS];
+
 /*SYSCALLS*/
 
 /********************************************************************/
@@ -77,6 +82,7 @@ VOID HOOKS_NtCreateSection_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
 }
 VOID HOOKS_NtAllocateVirtualMemory_exit(CONTEXT *ctx, SYSCALL_STANDARD std){
 	//TraceFile << "in HOOKS_NtAllocateVirtualMemory_exit \n";
+	printf("in HOOKS_NtAllocateVirtualMemory_exit \n");
 }
 VOID HOOKS_NtMapViewOfSection_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtMapViewOfSection_exit \n";
@@ -91,6 +97,8 @@ VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
 	if (PIN_SetThreadData(tls_key, tdata, tid) == FALSE) {
 		PIN_ExitProcess(1);
 	}
+	findStacks(ctxt);
+
 }
 
 VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {

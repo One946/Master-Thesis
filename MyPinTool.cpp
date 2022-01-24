@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string>
 #include "HooksHeader.h"
+#include "MemoryHeader.h"
 
 namespace W {
 #define _WINDOWS_H_PATH_ C:/Program Files/Windows Kits/10/Include/10.0.17763.0/um
@@ -58,10 +59,8 @@ int main(int argc, char* argv[]) {
 	// Initialize pin
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
-	EnumSyscalls(); // parse ntdll for ordinals
-	PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
-	PIN_AddThreadStartFunction(OnThreadStart, NULL);
-	PIN_AddSyscallExitFunction(SyscallExit, NULL);
+		IMG_AddInstrumentFunction(parse_funcsyms, 0);
+		IMG_AddUnloadFunction(ImageUnload, 0);
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	// Start the program, never returns
