@@ -1,5 +1,6 @@
 #include "pin.H"
 #include "MemoryHeader.h"
+#include <iostream>
 
 namespace W {
 #define _WINDOWS_H_PATH_ C:/Program Files/Windows Kits/10/Include/10.0.17763.0/um
@@ -26,6 +27,7 @@ enum {
 	CreateFileMappingA_INDEX,
 	CreateFileA_INDEX
 };
+
 //*******************************************************************
 //GLOBAL VARIABLES
 //*******************************************************************
@@ -766,6 +768,7 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	mem_array[img_counter].pagesType = memInfo.Type;
 	mem_array[img_counter].unloaded = 0;
 	img_counter++;
+	cout << IMG_Name(img) << " is beeing loaded \n";
 	MemAlloc(img, 0);
 	//EnumSyscalls();
 }
@@ -780,6 +783,12 @@ VOID ImageUnload(IMG img, VOID* v) {
 	}
 }
 
+VOID exitFunc() {
+	for (int i = 0; i < img_counter; i++) {
+		cout << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " is: " << mem_array[i].unloaded << " \n";
+		cout << " img high " << (void*) mem_array[i].high << " img low " << (void*)mem_array[i].low << "\n";
+	}
+}
 
 /*
 VOID Fini(INT32 code, VOID* v)

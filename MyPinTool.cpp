@@ -35,6 +35,8 @@ VOID Fini(INT32 code, VOID* v)
 	{
 		TraceFile.close();
 	}
+	exitFunc();
+
 }
 /* ===================================================================== */
 /* Print Help Message                                                    */
@@ -59,8 +61,11 @@ int main(int argc, char* argv[]) {
 	// Initialize pin
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
-		IMG_AddInstrumentFunction(parse_funcsyms, 0);
-		IMG_AddUnloadFunction(ImageUnload, 0);
+	IMG_AddInstrumentFunction(parse_funcsyms, 0);
+	//IMG_AddUnloadFunction(ImageUnload, 0);
+	EnumSyscalls(); // parse ntdll for ordinals
+	PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
+	PIN_AddThreadStartFunction(OnThreadStart, NULL);
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	// Start the program, never returns

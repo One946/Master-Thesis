@@ -1,6 +1,7 @@
 #include "pin.H"
 #include "HooksHeader.h"
-#include "MemoryHeader.h"
+#include "MemoryHeader.h"	
+//#include "Memory.cpp"
 
 
 namespace W {
@@ -15,7 +16,10 @@ using namespace std;
 //*******************************************************************
 //GLOBAL VARIABLES
 //*******************************************************************
-
+extern int img_counter;
+extern mem_regions mem_array[100]; //array in which i store valuable informations about the images
+extern int counter; //counter for instructions
+extern mem_map op_map;
 /*SYSCALLS*/
 unsigned int  NtAllocateVirtualMemory = 0x00000013;
 unsigned int  NtFreeVirtualMemory = 0x00000084;
@@ -70,24 +74,43 @@ VOID EnumSyscalls() {
 
 }
 
-VOID HOOKS_NtProtectVirtualMemory_exit(CONTEXT *ctx, SYSCALL_STANDARD std){
+VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std){
 	//TraceFile << "in HOOKS_NtProtectVirtualMemory_exit \n";
+	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 1 baseAddress 2 NumbOfBytes to be protected
+	W::PULONG NumOfBytes = (W::PULONG)PIN_GetSyscallArgument(ctx, std, 2);
 }
 
-VOID HOOKS_NtFreeVirtualMemory_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
+VOID HOOKS_NtFreeVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtFreeVirtualMemory_exit \n";
+	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 1 baseAddress 2 RegSize to be freed
+	W::PSIZE_T RegSize = (W::PSIZE_T)PIN_GetSyscallArgument(ctx, std, 2);
 }
-VOID HOOKS_NtCreateSection_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
+VOID HOOKS_NtCreateSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtCreateSection_exit \n";
 }
-VOID HOOKS_NtAllocateVirtualMemory_exit(CONTEXT *ctx, SYSCALL_STANDARD std){
+VOID HOOKS_NtAllocateVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std){
 	//TraceFile << "in HOOKS_NtAllocateVirtualMemory_exit \n";
 	printf("in HOOKS_NtAllocateVirtualMemory_exit \n");
+	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 2 baseAddress 4 RegSize to be freed
+	W::PSIZE_T RegSize = (W::PSIZE_T)PIN_GetSyscallArgument(ctx, std, 3);
+	W::ULONG Protect = PIN_GetSyscallArgument(ctx, std, 5);
+	printf("BaseAddress: %x, RegSize: %d \n", baseAddress, RegSize);
+	if (img_counter < 100) {
+		printf("img_counter: %d \n", img_counter);
+		//mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
+		mem_array[img_counter].protection = Protect;
+		mem_array[img_counter].id = img_counter;
+		mem_array[img_counter].high = baseAddress+(int)RegSize - 1;
+		mem_array[img_counter].low = baseAddress;
+		mem_array[img_counter].name = "NtAllocateVirtualMemory";
+		mem_array[img_counter].unloaded = 0;
+		img_counter++;
+	}
 }
-VOID HOOKS_NtMapViewOfSection_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
+VOID HOOKS_NtMapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtMapViewOfSection_exit \n";
 }
-VOID HOOKS_NtUnmapViewOfSection_exit(CONTEXT *ctx, SYSCALL_STANDARD std) {
+VOID HOOKS_NtUnmapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtUnmapViewOfSection_exit \n";
 }
 
@@ -110,23 +133,23 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 
 	if (syscall_number == NtAllocateVirtualMemory) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtAllocateVirtualMemory_exit(ctx, std);
+		HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
 	}
 	if (syscall_number == NtFreeVirtualMemory) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtFreeVirtualMemory_exit(ctx, std);
+		HOOKS_NtFreeVirtualMemory_entry(ctx, std);
 	}
 	if (syscall_number == NtMapViewOfSection) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtMapViewOfSection_exit(ctx, std);
+		HOOKS_NtMapViewOfSection_entry(ctx, std);
 	}
 	if (syscall_number == NtUnmapViewOfSection) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtUnmapViewOfSection_exit(ctx, std);
+		HOOKS_NtUnmapViewOfSection_entry(ctx, std);
 	}
 	if (syscall_number == NtCreateSection) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtCreateSection_exit(ctx, std);
+		HOOKS_NtCreateSection_entry(ctx, std);
 	}
 }
 

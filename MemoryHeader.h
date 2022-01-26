@@ -87,3 +87,4 @@ VOID MemAlloc(IMG img, VOID *v);
 //instrumentation functions
 VOID parse_funcsyms(IMG img, VOID *v);
 VOID ImageUnload(IMG img, VOID* v);
+VOID exitFunc();
