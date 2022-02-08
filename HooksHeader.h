@@ -30,6 +30,11 @@ typedef struct {
 	syscall_t sc;
 } pintool_tls;
 
+//delta
+typedef struct {
+	ADDRINT StartAddress;
+	ADDRINT EndAddress;
+}MemoryRange;
 /*Function headers */
 VOID EnumSyscalls();
 VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std);

@@ -183,10 +183,6 @@ VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
 /********************************************************************/
 /************************Validate Virtual Query**********************/
 /********************************************************************/
-VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) {
-	int* lpbuffer = (int*)arg2;
-	p2BuffVQEx = lpbuffer;
-}
 //function to parse virtual query arguments
 VOID ArgVQ(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2) { //lpbuffer of type MEMORY_BASIC_INFORMATION
 	int* lpbuffer = (int*)arg1;
@@ -197,6 +193,11 @@ VOID VQAfter(ADDRINT ret, IMG img) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQ;
 	//TraceFile << "Return value of VirtualQuery: " << (int)result->BaseAddress << " \n";
 }
+VOID ArgVQEx(char *name, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3) {
+	int* lpbuffer = (int*)arg2;
+	p2BuffVQEx = lpbuffer;
+}
+
 VOID VQExAfter(ADDRINT ret) {
 	W::MEMORY_BASIC_INFORMATION* result = (W::MEMORY_BASIC_INFORMATION *)p2BuffVQEx;
 	for (int i = 0; i < 50; i++) {

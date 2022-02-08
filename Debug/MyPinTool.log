@@ -1,5 +1,5 @@
 ﻿cl : Command line warning D9002: ignoring unknown option '/FP:strict'
-  Memory.cpp
+  Hooks.cpp
 c:\program files\windows kits\10\include\10.0.17763.0\shared\ntstatus.h(66): warning C4005: 'STATUS_WAIT_0': macro redefinition
   c:\program files\windows kits\10\include\10.0.17763.0\um\winnt.h(2450): note: see previous definition of 'STATUS_WAIT_0'
 c:\program files\windows kits\10\include\10.0.17763.0\shared\ntstatus.h(220): warning C4005: 'STATUS_ABANDONED_WAIT_0': macro redefinition
@@ -120,7 +120,7 @@ c:\program files\windows kits\10\include\10.0.17763.0\shared\ntstatus.h(14123): 
   c:\program files\windows kits\10\include\10.0.17763.0\um\winnt.h(2509): note: see previous definition of 'STATUS_SXS_EARLY_DEACTIVATION'
 c:\program files\windows kits\10\include\10.0.17763.0\shared\ntstatus.h(14132): warning C4005: 'STATUS_SXS_INVALID_DEACTIVATION': macro redefinition
   c:\program files\windows kits\10\include\10.0.17763.0\um\winnt.h(2510): note: see previous definition of 'STATUS_SXS_INVALID_DEACTIVATION'
-c:\pin-3.19\source\tools\mypintool\memory.cpp(396): warning C4101: 'memInfo': unreferenced local variable
+c:\pin-3.19\source\tools\mypintool\hooks.cpp(191): warning C4477: 'printf' : format string '%d' requires an argument of type 'int', but variadic argument 2 has type 'W::PSIZE_T'
      Creating library C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.lib and object C:\pin-3.19\source\tools\MyPinTool\Debug\MyPinTool.exp
 crtbeginS.obj : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
 Memory.obj : warning LNK4210: .CRT section exists; there may be unhandled static initializers or terminators
