@@ -49,90 +49,137 @@ unsigned int NtRequestWaitReplyPort = 0x0000012b;
 unsigned int NtQueryVolumeInformationFile = 0x0000010c;
 extern TLS_KEY tls_key;
 
-int vqcounter1 = 0;
-int vqcounter2 = 0;
-int* buff;
-// delta end
-//#define MAXSYSCALLS		
-//CHAR* syscallIDs[MAXSYSCALLS] = { 0 };
+int scCounter1 = 0;
+int scCounter2 = 0;
+
 
 #define MAXSYSCALLS	0x200
 CHAR* syscallIDs[MAXSYSCALLS];
 
-MemoryRange memRangArray1[1000];
-MemoryRange memRangArray2[1000];
+sysmap memRangArray1[500];
+sysmap memRangArray2[500];
 /*SYSCALLS*/
 
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
 // delta
-
-VOID tryfunc() {
-	W::SIZE_T numBytes;
-	W::DWORD MyAddress = 0;
-	W::MEMORY_BASIC_INFORMATION mbi;
-	//sok variables
-	W::PVOID maxAddr = 0;
-	ADDRINT end = 0x7fff0000;
-
-	while (1) {
-		numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
-		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
-		maxAddr = mbi.BaseAddress;
-		ADDRINT startAddr = (ADDRINT)mbi.BaseAddress;
-		ADDRINT size = mbi.RegionSize;
-		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
-			memRangArray1[vqcounter1].StartAddress = (ADDRINT)mbi.BaseAddress;
-			memRangArray1[vqcounter1].EndAddress = (ADDRINT)mbi.BaseAddress + mbi.RegionSize;
-		}
-		MyAddress += mbi.RegionSize;
-	//	printf("MyAddress value ---> %x \n", MyAddress);
-	//	printf("Base address: %d \n", mbi.BaseAddress);
-	//	printf("RegSize: %d \n", mbi.RegionSize);
+VOID changes( int regions) {
+	int counter=0;
+	if (memRangArray1[scCounter1-1].regionsSum < regions) {
+		printf("less region in entry more in exit \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
 	}
-	ADDRINT delta = memRangArray1[vqcounter1].EndAddress - memRangArray1[vqcounter1].StartAddress;
-	printf("Entry StartAddress: %x , EndAddress: %x \n", memRangArray1[vqcounter1].StartAddress, memRangArray1[vqcounter1].EndAddress);
-	printf("\tDelta: %d vqcounter1: %d \n", delta, vqcounter1);
+	else if (memRangArray1[scCounter1-1].regionsSum > regions) {
+		printf("more region in entry less in exit \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
+	}
+	else if (memRangArray1[scCounter1-1].regionsSum == regions) {
+		printf("same numb of regions \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
 
-	vqcounter1++;
-
+	}
+		
+		/*for (int i = 0; i < scCounter1	; i++) {
+			for (int j = 0; j < memRangArray2[i].regionsSum; j++) {
+				printf("****************************************** \n");
+				printf("ENTRY-CHECK start address: %x, end address: %x \n", memRangArray1[i].Array[j].StartAddress, memRangArray1[i].Array[j].EndAddress);
+				printf("ENTRY-CHECK region sum: %d \n", memRangArray1[i].regionsSum); //memRangArray1[i].Array[regions].StartAddress, memRangArray1[i].Array[regions].EndAddress);
+				printf("region id: %d \n", memRangArray1[i].Array[j].RegionID);
+				printf("scCounter1= %d, scCounter2= %d i= %d j= %d \n", scCounter1, scCounter2, i, j);
+				printf("EXIT-CHECK start address: %x, end address: %x  \n", memRangArray2[i].Array[j].StartAddress, memRangArray2[i].Array[j].EndAddress);
+				printf("region id: %d \n", memRangArray2[i].Array[j].RegionID);
+				printf("EXIT-CHECK region sum: %d \n", memRangArray2[i].regionsSum);//.Array[regions].StartAddress, memRangArray2[i].Array[regions].EndAddress);
+				//printf("scCounter2= %d \n", scCounter2);
+				printf("****************************************** \n");
+			}
+			// printf("ENTRY-CHECK region sum: %d \n", memRangArray1[i].regionsSum); //memRangArray1[i].Array[regions].StartAddress, memRangArray1[i].Array[regions].EndAddress);
+			// printf("EXIT-CHECK region sum: %d \n", memRangArray2[i].regionsSum);//.Array[regions].StartAddress, memRangArray2[i].Array[regions].EndAddress);
+		}*/
 }
 
 VOID funcEntry() { 
-	//lpbuffer of type MEMORY_BASIC_INFORMATION
-	//printf("In entry Function \n");
-	tryfunc();
+	W::MEMORY_BASIC_INFORMATION mbi;
+	W::SIZE_T numBytes;
+	W::DWORD MyAddress = 0;
+	//sok variables
+	W::PVOID maxAddr = 0;
+	ADDRINT end = 0x7ffe0000; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
+	int regions = 0;
+	ADDRINT regionend = 0;
+	W::SIZE_T size=0;
+
+	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
+		//numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
+		//printf("number of bytes from VQ: %d \n", numBytes);
+		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
+		maxAddr = mbi.BaseAddress;
+		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
+			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize -1;
+			memRangArray1[scCounter1].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memRangArray1[scCounter1].Array[regions].EndAddress = regionend;
+			memRangArray1[scCounter1].Array[regions].RegionID = regions;
+			memRangArray1[scCounter1].Array[regions].Size = mbi.RegionSize;
+			//printf("ENTRY-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray1[scCounter1].Array[regions].StartAddress, memRangArray1[scCounter1].Array[regions].EndAddress);
+			//printf("\t scCounter1: %d \n", scCounter1);
+			regions++;
+
+		}
+		memRangArray1[scCounter1].regionsSum = regions - 1;
+		size+= mbi.RegionSize;
+		MyAddress += mbi.RegionSize;
+	}
+	//printf("\t Regions count: %d \n", regions-1);
+	//printf("\t memRangArray1 Regions count: %d \n", memRangArray1[scCounter1].regionsSum);
+
+	//printf("\t total size: %d \n", size);
+	scCounter1++;
 }
 //function to retrive VirtualQuery return value	
 VOID funcExit() {
-	printf("In exit Function \n");
+	//printf("In exit Function \n");
+	W::MEMORY_BASIC_INFORMATION mbi;
 	W::SIZE_T numBytes;
 	W::DWORD MyAddress = 0;
-	W::MEMORY_BASIC_INFORMATION mbi;
-	//sok variables
 	W::PVOID maxAddr = 0;
-	ADDRINT end = 0x7fff0000; 
-	int count = 0;
-	while (1) {
-		numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
+	ADDRINT end = 0x7ffe0000 ; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
+	int regions = 0;
+	ADDRINT delta = 0;
+	ADDRINT regionend = 0;
+	W::SIZE_T size = 0;
+
+	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
-		maxAddr = mbi.BaseAddress; 
-		ADDRINT startAddr = (ADDRINT)mbi.BaseAddress;
-		ADDRINT size = mbi.RegionSize;
+		maxAddr = mbi.BaseAddress;
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
-			memRangArray2[vqcounter2].StartAddress = (ADDRINT)mbi.BaseAddress;
-			memRangArray2[vqcounter2].EndAddress = (ADDRINT)mbi.BaseAddress + mbi.RegionSize;
+
+			//if(memRangArray1[scCounter2].Array[regions].StartAddress == (ADDRINT)mbi.BaseAddress && memRangArray1[scCounter2].regionsSum -1 == regions){
+				//printf("Region already in memory \n");
+				printf("memRangArray1[scCounter2].Array[regions].StartAddress: %x \n \t -memRangArray1[scCounter2].Array[regions].RegionID: %d \n", memRangArray1[scCounter2].Array[regions].StartAddress,memRangArray1[scCounter2].Array[regions].RegionID);
+
+			//}
+			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize -1;
+			memRangArray2[scCounter2].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memRangArray2[scCounter2].Array[regions].EndAddress = regionend;
+			memRangArray2[scCounter2].Array[regions].RegionID = regions;
+			memRangArray2[scCounter2].Array[regions].Size = mbi.RegionSize;
+
+			printf("memRangArray2[scCounter2].Array[regions].StartAddress: %x \n \t regions: %d \n\n\n", memRangArray2[scCounter2].Array[regions].StartAddress, regions);
+			printf("scCounter2: %d, scCounter1: %d ! \n", scCounter2, scCounter1);
+			//changes(regions);
+			//printf("EXIT-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray2[scCounter2].Array[regions].StartAddress, memRangArray2[scCounter2].Array[regions].EndAddress);
+			//printf("\t vqcounter2: %d, RegionID: %d \n", scCounter2, memRangArray2[scCounter2].Array[regions].RegionID);
+			regions++;
 		}
-		MyAddress += mbi.RegionSize;	
-	//	printf("MyAddress value ---> %x \n", MyAddress);
-	//	printf("Base address: %d \n", mbi.BaseAddress);
-	//	printf("RegSize: %d \n", mbi.RegionSize);
+		memRangArray2[scCounter2].regionsSum = regions-1;
+		size += mbi.RegionSize;
+		MyAddress += mbi.RegionSize;
 	}
-	ADDRINT delta = memRangArray2[vqcounter2].EndAddress - memRangArray2[vqcounter2].StartAddress;
-	printf("EXIT StartAddress: %d , EndAddress: %d \n", memRangArray2[vqcounter2].StartAddress, memRangArray2[vqcounter2].EndAddress);
-	printf("\tDelta: %d vqcounter2: %d \n", delta, vqcounter2);
-	vqcounter2++;
+	printf("\t Regions count: %d \n", regions - 1);
+	printf("\t EXIT total size: %d \n", size);
+	scCounter2++;
+	
+
 }
 //syscalls
 VOID EnumSyscalls() {

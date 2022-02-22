@@ -34,8 +34,18 @@ typedef struct {
 typedef struct {
 	ADDRINT StartAddress;
 	ADDRINT EndAddress;
+	int RegionID;
+	W::SIZE_T Size;
 }MemoryRange;
+
+typedef struct {
+	unsigned int syscallID;
+	MemoryRange Array[1000]; //array of memory regions
+	int regionsSum; // index for looping on array
+}sysmap;
+
 /*Function headers */
+VOID changes(int regions);
 VOID EnumSyscalls();
 VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std);
 VOID HOOKS_NtFreeVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std);
