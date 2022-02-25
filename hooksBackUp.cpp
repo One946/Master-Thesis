@@ -51,32 +51,51 @@ extern TLS_KEY tls_key;
 
 int scCounter1 = 0;
 int scCounter2 = 0;
-int diffIndex = 0;
 
 
 #define MAXSYSCALLS	0x200
 CHAR* syscallIDs[MAXSYSCALLS];
 
-//sysmap memRangArray1[500];
-//sysmap memRangArray2[500];
+sysmap memRangArray1[500];
+sysmap memRangArray2[500];
 /*SYSCALLS*/
-MemoryRange pippo1[100];
-MemoryRange pippo2[100];
-RegionsOfInterest pippo3;
-
-sysmap prova1;
-sysmap prova2;
 
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
-BOOL changed(sysmap* array1, sysmap* array2) {
-	bool DifSize = 0; // variable to check if regions number changed
-	DifSize = array1->regionsSum != array2->regionsSum;
-	if(DifSize){
-		printf("different sizes");
-		return true;
+// delta
+VOID changes( int regions) {
+	int counter=0;
+	if (memRangArray1[scCounter1-1].regionsSum < regions) {
+		printf("less region in entry more in exit \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
 	}
+	else if (memRangArray1[scCounter1-1].regionsSum > regions) {
+		printf("more region in entry less in exit \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
+	}
+	else if (memRangArray1[scCounter1-1].regionsSum == regions) {
+		printf("same numb of regions \n");
+		printf("\t MemArray1.regions: %d , regions: %d \n", memRangArray1[scCounter1 - 1].regionsSum, regions);
+
+	}
+		
+		/*for (int i = 0; i < scCounter1	; i++) {
+			for (int j = 0; j < memRangArray2[i].regionsSum; j++) {
+				printf("****************************************** \n");
+				printf("ENTRY-CHECK start address: %x, end address: %x \n", memRangArray1[i].Array[j].StartAddress, memRangArray1[i].Array[j].EndAddress);
+				printf("ENTRY-CHECK region sum: %d \n", memRangArray1[i].regionsSum); //memRangArray1[i].Array[regions].StartAddress, memRangArray1[i].Array[regions].EndAddress);
+				printf("region id: %d \n", memRangArray1[i].Array[j].RegionID);
+				printf("scCounter1= %d, scCounter2= %d i= %d j= %d \n", scCounter1, scCounter2, i, j);
+				printf("EXIT-CHECK start address: %x, end address: %x  \n", memRangArray2[i].Array[j].StartAddress, memRangArray2[i].Array[j].EndAddress);
+				printf("region id: %d \n", memRangArray2[i].Array[j].RegionID);
+				printf("EXIT-CHECK region sum: %d \n", memRangArray2[i].regionsSum);//.Array[regions].StartAddress, memRangArray2[i].Array[regions].EndAddress);
+				//printf("scCounter2= %d \n", scCounter2);
+				printf("****************************************** \n");
+			}
+			// printf("ENTRY-CHECK region sum: %d \n", memRangArray1[i].regionsSum); //memRangArray1[i].Array[regions].StartAddress, memRangArray1[i].Array[regions].EndAddress);
+			// printf("EXIT-CHECK region sum: %d \n", memRangArray2[i].regionsSum);//.Array[regions].StartAddress, memRangArray2[i].Array[regions].EndAddress);
+		}*/
 }
 
 VOID funcEntry() { 
@@ -88,7 +107,7 @@ VOID funcEntry() {
 	ADDRINT end = 0x7ffe0000; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
 	int regions = 0;
 	ADDRINT regionend = 0;
-	W::SIZE_T size = 0;
+	W::SIZE_T size=0;
 
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		//numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
@@ -96,52 +115,71 @@ VOID funcEntry() {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
-			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
+			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize -1;
+			memRangArray1[scCounter1].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memRangArray1[scCounter1].Array[regions].EndAddress = regionend;
+			memRangArray1[scCounter1].Array[regions].RegionID = regions;
+			memRangArray1[scCounter1].Array[regions].Size = mbi.RegionSize;
 			//printf("ENTRY-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray1[scCounter1].Array[regions].StartAddress, memRangArray1[scCounter1].Array[regions].EndAddress);
 			//printf("\t scCounter1: %d \n", scCounter1);
-			pippo1[regions].EndAddress = regionend;
-			pippo1[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			pippo1[regions].RegionID = regions;
-			pippo1[regions].Size = mbi.RegionSize;
 			regions++;
+
 		}
-		size += mbi.RegionSize;
+		memRangArray1[scCounter1].regionsSum = regions - 1;
+		size+= mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-	printf("EXIT regions count: %d \n", regions);
+	//printf("\t Regions count: %d \n", regions-1);
+	//printf("\t memRangArray1 Regions count: %d \n", memRangArray1[scCounter1].regionsSum);
 
+	//printf("\t total size: %d \n", size);
+	scCounter1++;
 }
 //function to retrive VirtualQuery return value	
 VOID funcExit() {
+	//printf("In exit Function \n");
 	W::MEMORY_BASIC_INFORMATION mbi;
 	W::SIZE_T numBytes;
 	W::DWORD MyAddress = 0;
-	//sok variables
 	W::PVOID maxAddr = 0;
-	ADDRINT end = 0x7ffe0000; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
+	ADDRINT end = 0x7ffe0000 ; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
 	int regions = 0;
+	ADDRINT delta = 0;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
 
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
-		//numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
-		//printf("number of bytes from VQ: %d \n", numBytes);
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
-			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
-			//printf("ENTRY-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray1[scCounter1].Array[regions].StartAddress, memRangArray1[scCounter1].Array[regions].EndAddress);
-			//printf("\t scCounter1: %d \n", scCounter1);			pippo1[regions].EndAddress = regionend;
-			pippo2[regions].EndAddress = regionend;
-			pippo2[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			pippo2[regions].RegionID = regions;
-			pippo2[regions].Size = mbi.RegionSize;
+
+			//if(memRangArray1[scCounter2].Array[regions].StartAddress == (ADDRINT)mbi.BaseAddress && memRangArray1[scCounter2].regionsSum -1 == regions){
+				//printf("Region already in memory \n");
+				printf("memRangArray1[scCounter2].Array[regions].StartAddress: %x \n \t -memRangArray1[scCounter2].Array[regions].RegionID: %d \n", memRangArray1[scCounter2].Array[regions].StartAddress,memRangArray1[scCounter2].Array[regions].RegionID);
+
+			//}
+			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize -1;
+			memRangArray2[scCounter2].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memRangArray2[scCounter2].Array[regions].EndAddress = regionend;
+			memRangArray2[scCounter2].Array[regions].RegionID = regions;
+			memRangArray2[scCounter2].Array[regions].Size = mbi.RegionSize;
+
+			printf("memRangArray2[scCounter2].Array[regions].StartAddress: %x \n \t regions: %d \n\n\n", memRangArray2[scCounter2].Array[regions].StartAddress, regions);
+			printf("scCounter2: %d, scCounter1: %d ! \n", scCounter2, scCounter1);
+			//changes(regions);
+			//printf("EXIT-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray2[scCounter2].Array[regions].StartAddress, memRangArray2[scCounter2].Array[regions].EndAddress);
+			//printf("\t vqcounter2: %d, RegionID: %d \n", scCounter2, memRangArray2[scCounter2].Array[regions].RegionID);
 			regions++;
 		}
+		memRangArray2[scCounter2].regionsSum = regions-1;
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-	printf("EXIT regions count: %d \n", regions);
+	printf("\t Regions count: %d \n", regions - 1);
+	printf("\t EXIT total size: %d \n", size);
+	scCounter2++;
+	
+
 }
 //syscalls
 VOID EnumSyscalls() {
@@ -341,50 +379,6 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
 	syscall_t *sc = &tdata->sc;
 	funcExit();
-	ADDRINT delta1 = 0;
-	ADDRINT delta2 = 0;
-
-	prova1.regionsSum = 8;
-	prova2.regionsSum = 99;
-
-	bool pippo = changed(&prova1, &prova2);
-
-
-	for (int i = 0; i < 83; i++) {
-		delta1 = pippo1[i].StartAddress - pippo2[i].StartAddress;
-		delta2 = pippo1[i].EndAddress - pippo2[i].EndAddress;
-
-		if(delta1!=0 || delta2!=0){
-		printf("******************************** \n");
-		printf("ENTRY Start address: %x, End Address: %x \n", pippo1[i].StartAddress, pippo1[i].EndAddress);
-		printf("EXIT Start address: %x, End Address: %x \n", pippo2[i].StartAddress, pippo2[i].EndAddress);
-		printf(" \t\t\t\t delta1: %d, delta2: %d \n", delta1, delta2);
-		printf("ENTRY size: %d, regionID: %d \n", pippo1[i].Size, pippo1[i].RegionID);
-		printf("EXIT size: %d, regionID: %d \n", pippo2[i].Size, pippo2[i].RegionID);
-	
-
-		pippo3.array1[diffIndex].EndAddress = pippo1[i].EndAddress;
-		pippo3.array1[diffIndex].StartAddress = pippo1[i].StartAddress;
-		pippo3.array1[diffIndex].Size = pippo1[i].Size;
-		pippo3.array1[diffIndex].RegionID = pippo1[i].RegionID;
-
-		pippo3.array2[diffIndex].EndAddress = pippo2[i].EndAddress;
-		pippo3.array2[diffIndex].StartAddress = pippo2[i].StartAddress;
-		pippo3.array2[diffIndex].Size = pippo2[i].Size;
-		pippo3.array2[diffIndex].RegionID = pippo2[i].RegionID;
-
-		printf("ENTRY pippo3.array1[diffIndex].StartAddress: %x, pippo3.array1[diffIndex].EndAddress: %x \n", pippo3.array1[diffIndex].StartAddress, pippo3.array1[diffIndex].EndAddress);
-		printf("EXIT pippo3.array2[diffIndex].StartAddress: %x, pippo3.array2[diffIndex].EndAddress: %x \n", pippo3.array2[diffIndex].StartAddress, pippo3.array2[diffIndex].EndAddress);
-		printf("******************************** \n");
-		//printf(" \t\t\t\t delta1: %d, delta2: %d \n", delta1, delta2);
-		//printf("ENTRY size: %d, regionID: %d \n", pippo1[i].Size, pippo1[i].RegionID);
-		//printf("EXIT size: %d, regionID: %d \n", pippo2[i].Size, pippo2[i].RegionID);
-
-
-		diffIndex++;
-
-		}
-	}
 			//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
 
 }

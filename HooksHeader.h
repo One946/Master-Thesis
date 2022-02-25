@@ -39,6 +39,11 @@ typedef struct {
 }MemoryRange;
 
 typedef struct {
+	MemoryRange array1[100];
+	MemoryRange array2[100];
+}RegionsOfInterest;
+
+typedef struct {
 	unsigned int syscallID;
 	MemoryRange Array[1000]; //array of memory regions
 	int regionsSum; // index for looping on array
