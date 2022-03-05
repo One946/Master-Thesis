@@ -17,9 +17,10 @@ using namespace std;
 //GLOBAL VARIABLES
 //*******************************************************************
 extern int img_counter;
-extern mem_regions mem_array[100]; //array in which i store valuable informations about the images
+extern mem_regions mem_array[100]; //array in which  informations about the images are stored
 extern int counter; //counter for instructions
 extern mem_map op_map;
+
 /*SYSCALLS*/
 unsigned int  NtAllocateVirtualMemory = 0x00000013;
 unsigned int  NtFreeVirtualMemory = 0x00000083;
@@ -41,17 +42,24 @@ unsigned int NtOpenFile = 0x000000b3;
 unsigned int NtSetInformationResourceManager = 0x0000014d;
 unsigned int NtQueryInformationProcess = 0x000000ea;
 unsigned int NtQueryPerformanceCounter = 0x000000fb;
-unsigned int NtWriteFile = 0x0000018c; 
+unsigned int NtWriteFile = 0x0000018c;
 unsigned int NtTerminateProcess = 0x00000172;
 unsigned int NtQueryVirtualMemory = 0x0000010b;
-
 unsigned int NtRequestWaitReplyPort = 0x0000012b;
 unsigned int NtQueryVolumeInformationFile = 0x0000010c;
+unsigned int NtOpenDirectoryObject = 0x000000af;
+unsigned int NtCreateFile = 0x00000042;
+unsigned int NtCreateSemaphore = 0x00000055;
+unsigned int NtTestAlert = 0x00000175;
+unsigned int NtContinue = 0x0000003c;
+unsigned int NtQueryDirectoryFile = 0x000000df;
+unsigned int NtThawRegistry = 0x00000174;
+
 extern TLS_KEY tls_key;
 
-int scCounter1 = 0;
-int scCounter2 = 0;
-int diffIndex = 0;
+int scCounter1 = 0; // counter used to identify order in syscall in entry
+int scCounter2 = 0; // counter used to identify order in syscall in entry
+int diffIndex = 0; // counter used to identify the regions changes 
 
 
 #define MAXSYSCALLS	0x200
@@ -60,90 +68,194 @@ CHAR* syscallIDs[MAXSYSCALLS];
 //sysmap memRangArray1[500];
 //sysmap memRangArray2[500];
 /*SYSCALLS*/
-MemoryRange pippo1[100];
-MemoryRange pippo2[100];
-RegionsOfInterest pippo3;
 
-sysmap prova1;
-sysmap prova2;
+sysmap prova1[500];
+sysmap prova2[500];
+differences rIndex[100];
 
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
-BOOL changed(sysmap* array1, sysmap* array2) {
-	bool DifSize = 0; // variable to check if regions number changed
-	DifSize = array1->regionsSum != array2->regionsSum;
-	if(DifSize){
-		printf("different sizes");
-		return true;
+
+// Helper method to print  information about the differences in memory regions before and after a syscall
+VOID printRegions() {
+	printf("different regions spotted! \n");
+
+	for (int i = 0; i < 100; i++) {
+		printf("rIndex[i].entryRID %d \n", rIndex[i].entryRID);
+		printf("rIndex[i].exitRID %d \n", rIndex[i].exitRID);
+		int EntryRegion = rIndex[i].Entry[rIndex[i].regIndex].RegionID;
+		int ExitRegion = rIndex[i].Exit[rIndex[i].regIndex].RegionID;
+		printf("rIndex[i].regIndex: %d, rIndex[i].syscallIndex: %d, i: %d \n ", rIndex[i].regIndex, rIndex[i].syscallIndex, i);
+		printf("EntryRegion: %d , ExitRegion: %d \n", EntryRegion, ExitRegion);
+		printf("Entry base address: %x , Entry max address: %x \n", rIndex[i].Entry[EntryRegion].StartAddress, rIndex[i].Entry[EntryRegion].EndAddress);
+		printf("Exit base address: %x , Exit max address: %x \n", rIndex[i].Exit[EntryRegion].StartAddress, rIndex[i].Exit[EntryRegion].EndAddress);
+		printf("----------------------------------------------------- \n");
+	}
+	printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+	printf("First ENTRY address: %x , Last ENTRY address: %x \n", prova1[0].Array[0].StartAddress, prova1[0].Array[prova1[0].regionsSum].EndAddress);
+	printf("First EXIT address: %x , Last EXIT address: %x \n", prova2[0].Array[0].StartAddress, prova2[0].Array[prova2[0].regionsSum].EndAddress);
+	printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+}
+
+// Method to spot differences between memory regions before and after a syscall
+VOID changed() {
+	bool gt = 0; // variable to check if regions is greater in exit
+	bool lt = 0; // variable to check if regions is lesser in exit
+	bool eq = 0; // variable to check if regions is equal in exit
+	ADDRINT delta1 = 0;
+	ADDRINT delta2 = 0;
+	int difIndex;  // index to count the different region and identify them
+	int prova1Max = 0; // max number of region of a prova1
+	fflush(stdout);
+
+	for (int i = 0; i < scCounter1; i++) { //cicle on every syscall in the array
+		gt = prova1[i].regionsSum < prova2[i].regionsSum;
+		lt = prova1[i].regionsSum > prova2[i].regionsSum;
+		eq = prova1[i].regionsSum == prova2[i].regionsSum;
+		prova1Max = prova1[i].regionsSum - 1;
+
+		if (gt) { //more region in exit than in entry
+			difIndex = 0;
+			for (int j = 0; j < prova2[i].regionsSum; j++) { //cicle on every region saved
+				if ((prova1[i].Array[j].StartAddress == prova2[i].Array[j].StartAddress) && (prova1[i].Array[j].EndAddress == prova2[i].Array[j].EndAddress)) {
+					continue;
+				}
+				if (prova1[i].regionsSum >= j) {
+					prova1Max = prova1[i].regionsSum - 1;
+
+					delta1 = prova1[i].Array[prova1Max].StartAddress - prova2[i].Array[j].StartAddress;
+					delta2 = prova1[i].Array[prova1Max].EndAddress - prova2[i].Array[j].EndAddress;
+
+					if (delta1 != 0 || delta2 != 0) {
+						//fill an array to store information about differences
+						rIndex[difIndex].entryRID = prova1[i].Array[prova1Max].RegionID;
+						rIndex[difIndex].exitRID = prova2[i].Array[j].RegionID;
+						rIndex[difIndex].Entry = prova1[i].Array;
+						rIndex[difIndex].Exit = prova2[i].Array;
+						rIndex[difIndex].regIndex = j;
+						rIndex[difIndex].syscallIndex = i;
+						rIndex[difIndex].syscallID = prova1[i].syscallID;
+						difIndex++;
+					}
+				}
+				else{
+					delta1 = prova1[i].Array[j].StartAddress - prova2[i].Array[j].StartAddress;
+					delta2 = prova1[i].Array[j].EndAddress - prova2[i].Array[j].EndAddress;
+
+					if (delta1 != 0 || delta2 != 0) {		
+						//fill an array to store information about differences
+						rIndex[difIndex].entryRID = prova1[i].Array[j].RegionID;
+						rIndex[difIndex].exitRID = prova2[i].Array[j].RegionID;
+						rIndex[difIndex].Entry = prova1[i].Array;
+						rIndex[difIndex].Exit = prova2[i].Array;
+						rIndex[difIndex].regIndex = j;
+						rIndex[difIndex].syscallIndex = i;
+						rIndex[difIndex].syscallID = prova1[i].syscallID;
+						difIndex++;
+					}
+				}
+				delta1 = 0;
+				delta2 = 0;
+			}
+		}
+		
+		if (lt) {		//Less region in exit than in entry
+
+			for (int j = 0; j < prova2[i].regionsSum; j++) { //cicle on every region saved
+				if (prova1[i].Array[j].StartAddress != 0) {
+					delta1 = prova1[i].Array[j].StartAddress - prova2[i].Array[j].StartAddress;
+					delta2 = prova1[i].Array[j].EndAddress - prova2[i].Array[j].EndAddress;
+					
+					if (delta1 != 0 || delta2 != 0) {
+
+					}
+
+					delta1 = 0;
+					delta2 = 0;
+				}
+			}
+		}
+
+		if (eq) { //SAME NUMBER OF REGIONS
+
+		}
 	}
 }
 
-VOID funcEntry() { 
+// function to enumerate memory regions before a syscall is executed
+VOID funcEntry() {
 	W::MEMORY_BASIC_INFORMATION mbi;
 	W::SIZE_T numBytes;
 	W::DWORD MyAddress = 0;
 	//sok variables
 	W::PVOID maxAddr = 0;
-	ADDRINT end = 0x7ffe0000; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
+	ADDRINT end = 0x7ffe0000; // address to query to -> 0x7ffe0000->KUSERDATA or 0x7fff0000->BLACK MAGIC
 	int regions = 0;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
+	fflush(stdout);
 
+	//cycle on the whole memroy, untill the end address
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
-		//numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
-		//printf("number of bytes from VQ: %d \n", numBytes);
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
+
+			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
-			//printf("ENTRY-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray1[scCounter1].Array[regions].StartAddress, memRangArray1[scCounter1].Array[regions].EndAddress);
-			//printf("\t scCounter1: %d \n", scCounter1);
-			pippo1[regions].EndAddress = regionend;
-			pippo1[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			pippo1[regions].RegionID = regions;
-			pippo1[regions].Size = mbi.RegionSize;
+			prova1[scCounter1].Array[regions].EndAddress = regionend;
+			prova1[scCounter1].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			prova1[scCounter1].Array[regions].RegionID = regions;
+			prova1[scCounter1].Array[regions].Size = mbi.RegionSize;
 			regions++;
 		}
+
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-	printf("EXIT regions count: %d \n", regions);
 
+	prova1[scCounter1].regionsSum = regions - 1;
+	prova1[scCounter1].syscallID = scCounter1;
+	scCounter1++;
 }
-//function to retrive VirtualQuery return value	
+
+// function to enumerate memory regions after a syscall is executed
 VOID funcExit() {
 	W::MEMORY_BASIC_INFORMATION mbi;
 	W::SIZE_T numBytes;
 	W::DWORD MyAddress = 0;
 	//sok variables
 	W::PVOID maxAddr = 0;
-	ADDRINT end = 0x7ffe0000; //0x7ffe0000->KUSERDATA 0x7fff0000->BLACK MAGIC
+	ADDRINT end = 0x7ffe0000; // address to query to -> 0x7ffe0000->KUSERDATA or 0x7fff0000->BLACK MAGIC
 	int regions = 0;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
-
+	fflush(stdout);
+	
+	//cycle on the whole memroy, untill the end address
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
-		//numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
-		//printf("number of bytes from VQ: %d \n", numBytes);
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
+			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
-			//printf("ENTRY-CHECK StartAddress: %x , EndAddress: %x \n", memRangArray1[scCounter1].Array[regions].StartAddress, memRangArray1[scCounter1].Array[regions].EndAddress);
-			//printf("\t scCounter1: %d \n", scCounter1);			pippo1[regions].EndAddress = regionend;
-			pippo2[regions].EndAddress = regionend;
-			pippo2[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			pippo2[regions].RegionID = regions;
-			pippo2[regions].Size = mbi.RegionSize;
+			prova2[scCounter2].Array[regions].EndAddress = regionend;
+			prova2[scCounter2].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			prova2[scCounter2].Array[regions].RegionID = regions;
+			prova2[scCounter2].Array[regions].Size = mbi.RegionSize;
 			regions++;
+
 		}
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-	printf("EXIT regions count: %d \n", regions);
+	 prova2[scCounter2].regionsSum = regions - 1;
+	 prova2[scCounter2].syscallID = scCounter2;
+	scCounter2++;
 }
-//syscalls
+
+//enumerate syscalls' ordinals
 VOID EnumSyscalls() {
 	unsigned char *image = (unsigned char *)W::GetModuleHandle("ntdll");
 	W::IMAGE_DOS_HEADER *dos_header = (W::IMAGE_DOS_HEADER *) image;
@@ -177,12 +289,11 @@ VOID EnumSyscalls() {
 
 }
 
-VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std){
+VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	printf("in HOOKS_NtProtectVirtualMemory_exit \n");
 	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 1 baseAddress 2 NumbOfBytes to be protected
 	W::PULONG NumOfBytes = (W::PULONG)PIN_GetSyscallArgument(ctx, std, 2);
 }
-
 VOID HOOKS_NtFreeVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	printf("in HOOKS_NtFreeVirtualMemory_entry \n");
 	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 1 baseAddress 2 RegSize to be freed
@@ -191,7 +302,7 @@ VOID HOOKS_NtFreeVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 VOID HOOKS_NtCreateSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	printf("in HOOKS_NtCreateSection_exit \n");
 }
-VOID HOOKS_NtAllocateVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std){
+VOID HOOKS_NtAllocateVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//TraceFile << "in HOOKS_NtAllocateVirtualMemory_exit \n";
 	printf("in HOOKS_NtAllocateVirtualMemory_entry \n");
 	ADDRINT baseAddress = PIN_GetSyscallArgument(ctx, std, 1); // 2 baseAddress 4 RegSize to be freed
@@ -203,7 +314,7 @@ VOID HOOKS_NtAllocateVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std){
 		//mem_reg = (int)memInfo.BaseAddress + memInfo.RegionSize;
 		mem_array[img_counter].protection = Protect;
 		mem_array[img_counter].id = img_counter;
-		mem_array[img_counter].high = baseAddress+(int)RegSize - 1;
+		mem_array[img_counter].high = baseAddress + (int)RegSize - 1;
 		mem_array[img_counter].low = baseAddress;
 		mem_array[img_counter].name = "NtAllocateVirtualMemory";
 		mem_array[img_counter].unloaded = 0;
@@ -235,6 +346,8 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	sc->syscall_number = syscall_number;
 	printf("****************Syscall number: %x ****************\n", syscall_number);
 	funcEntry();
+
+
 	if (syscall_number == NtAllocateVirtualMemory) { //NtAllocateVirtualMemory
 		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
 		HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
@@ -334,62 +447,51 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
 		printf("NtQueryVolumeInformationFile \n");
 	}
+	if (syscall_number == NtOpenDirectoryObject) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtOpenDirectoryObject \n");
+	}if (syscall_number == NtCreateFile) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtCreateFile \n");
+	}if (syscall_number == NtCreateSemaphore) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtCreateSemaphore \n");
+	}if (syscall_number == NtTestAlert) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtTestAlert \n");
+	}if (syscall_number == NtContinue) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtContinue \n");
+	}if (syscall_number == NtQueryDirectoryFile) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtQueryDirectoryFile \n");
+	}if (syscall_number == NtThawRegistry) { //NtAllocateVirtualMemory
+		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
+		printf("NtThawRegistry \n");
+	}
+
 }
 
 
 VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
-	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
-	syscall_t *sc = &tdata->sc;
+	//pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
+	//syscall_t *sc = &tdata->sc;
+
 	funcExit();
-	ADDRINT delta1 = 0;
-	ADDRINT delta2 = 0;
+	changed();
 
-	prova1.regionsSum = 8;
-	prova2.regionsSum = 99;
-
-	bool pippo = changed(&prova1, &prova2);
-
-
-	for (int i = 0; i < 83; i++) {
-		delta1 = pippo1[i].StartAddress - pippo2[i].StartAddress;
-		delta2 = pippo1[i].EndAddress - pippo2[i].EndAddress;
-
-		if(delta1!=0 || delta2!=0){
-		printf("******************************** \n");
-		printf("ENTRY Start address: %x, End Address: %x \n", pippo1[i].StartAddress, pippo1[i].EndAddress);
-		printf("EXIT Start address: %x, End Address: %x \n", pippo2[i].StartAddress, pippo2[i].EndAddress);
-		printf(" \t\t\t\t delta1: %d, delta2: %d \n", delta1, delta2);
-		printf("ENTRY size: %d, regionID: %d \n", pippo1[i].Size, pippo1[i].RegionID);
-		printf("EXIT size: %d, regionID: %d \n", pippo2[i].Size, pippo2[i].RegionID);
-	
-
-		pippo3.array1[diffIndex].EndAddress = pippo1[i].EndAddress;
-		pippo3.array1[diffIndex].StartAddress = pippo1[i].StartAddress;
-		pippo3.array1[diffIndex].Size = pippo1[i].Size;
-		pippo3.array1[diffIndex].RegionID = pippo1[i].RegionID;
-
-		pippo3.array2[diffIndex].EndAddress = pippo2[i].EndAddress;
-		pippo3.array2[diffIndex].StartAddress = pippo2[i].StartAddress;
-		pippo3.array2[diffIndex].Size = pippo2[i].Size;
-		pippo3.array2[diffIndex].RegionID = pippo2[i].RegionID;
-
-		printf("ENTRY pippo3.array1[diffIndex].StartAddress: %x, pippo3.array1[diffIndex].EndAddress: %x \n", pippo3.array1[diffIndex].StartAddress, pippo3.array1[diffIndex].EndAddress);
-		printf("EXIT pippo3.array2[diffIndex].StartAddress: %x, pippo3.array2[diffIndex].EndAddress: %x \n", pippo3.array2[diffIndex].StartAddress, pippo3.array2[diffIndex].EndAddress);
-		printf("******************************** \n");
-		//printf(" \t\t\t\t delta1: %d, delta2: %d \n", delta1, delta2);
-		//printf("ENTRY size: %d, regionID: %d \n", pippo1[i].Size, pippo1[i].RegionID);
-		//printf("EXIT size: %d, regionID: %d \n", pippo2[i].Size, pippo2[i].RegionID);
-
-
-		diffIndex++;
-
-		}
-	}
-			//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
+	//printf(" %x \n",(void*)sc->syscall_number);
 
 }
 
-	//EnumSyscalls(); // parse ntdll for ordinals
-	//PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
-	//PIN_AddThreadStartFunction(OnThreadStart, NULL);
-	//PIN_AddSyscallExitFunction(SyscallExit, NULL);
+//EnumSyscalls(); // parse ntdll for ordinals
+//PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
+//PIN_AddThreadStartFunction(OnThreadStart, NULL);
+//PIN_AddSyscallExitFunction(SyscallExit, NULL);

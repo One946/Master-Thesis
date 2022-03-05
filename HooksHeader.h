@@ -39,18 +39,25 @@ typedef struct {
 }MemoryRange;
 
 typedef struct {
-	MemoryRange array1[100];
-	MemoryRange array2[100];
-}RegionsOfInterest;
-
-typedef struct {
 	unsigned int syscallID;
 	MemoryRange Array[1000]; //array of memory regions
 	int regionsSum; // index for looping on array
 }sysmap;
 
+typedef struct {
+	MemoryRange* Entry; //array of memory regions in entry
+	MemoryRange* Exit; //array of memory regions in exity
+	int entryRID; // ID of region in Entry
+	int exitRID; // ID of region in Exit
+	int regIndex; //index of the array at which the region has been found, in most of the cases is same of the ID
+	int syscallIndex; //Index of the array of syscals at which differences has been found
+	int syscallID; //Id of the syscall of interest
+
+}differences;
+
 /*Function headers */
-VOID changes(int regions);
+VOID printRegions();
+VOID changed();
 VOID EnumSyscalls();
 VOID HOOKS_NtProtectVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std);
 VOID HOOKS_NtFreeVirtualMemory_entry(CONTEXT *ctx, SYSCALL_STANDARD std);

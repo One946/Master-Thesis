@@ -33,12 +33,12 @@ VOID CreateFileWafter(ADDRINT ret)
 }
 VOID Fini(INT32 code, VOID* v)
 {
+	printRegions();
+
 	if (TraceFile.is_open())
 	{
 		TraceFile.close();
 	}
-	exitFunc();
-
 }
 /* ===================================================================== */
 /* Print Help Message                                                    */
@@ -65,7 +65,8 @@ int main(int argc, char* argv[]) {
 	TraceFile.open(KnobOutputFile.Value().c_str());
 	//IMG_AddUnloadFunction(ImageUnload, 0);
 	EnumSyscalls(); // parse ntdll for ordinals
-	PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
+	
+	PIN_AddSyscallEntryFunction(SyscallEntry, NULL); 
 	PIN_AddSyscallExitFunction(SyscallExit, NULL);
 	PIN_AddThreadStartFunction(OnThreadStart, NULL);
 	// Register Fini to be called when the application exits
