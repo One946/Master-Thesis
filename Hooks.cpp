@@ -118,12 +118,20 @@ VOID changed() {
 		if (gt) { //more region in exit than in entry
 			difIndex = 0;
 			for (int j = 0; j < prova2[i].regionsSum; j++) { //cicle on every region saved
-				if ((prova1[i].Array[j].StartAddress == prova2[i].Array[j].StartAddress) && (prova1[i].Array[j].EndAddress == prova2[i].Array[j].EndAddress)) {
+				/* if ((prova1[i].Array[j].StartAddress == prova2[i].Array[j].StartAddress) && (prova1[i].Array[j].EndAddress == prova2[i].Array[j].EndAddress)) {
 					continue;
 				}
 				if (prova1[i].regionsSum >= j) {
 					prova1Max = prova1[i].regionsSum - 1;
+				*/
+				for (int k = 0; k < prova1[i].regionsSum; k++) {
 
+					if ((prova2[i].Array[j].StartAddress == prova1[i].Array[k].StartAddress)
+						&& (prova2[i].Array[j].EndAddress == prova1[i].Array[k].EndAddress)
+					    && (prova2[i].Array[j].RegionID != prova1[i].Array[k].RegionID)) {
+						printf("prova2[i].Array[j].RegionID: %d , prova1[i].Array[k].RegionID: %d \n", prova2[i].Array[j].RegionID, prova1[i].Array[k].RegionID);
+					}
+				}
 					delta1 = prova1[i].Array[prova1Max].StartAddress - prova2[i].Array[j].StartAddress;
 					delta2 = prova1[i].Array[prova1Max].EndAddress - prova2[i].Array[j].EndAddress;
 
@@ -138,7 +146,7 @@ VOID changed() {
 						rIndex[difIndex].syscallID = prova1[i].syscallID;
 						difIndex++;
 					}
-				}
+			//	}
 				else{
 					delta1 = prova1[i].Array[j].StartAddress - prova2[i].Array[j].StartAddress;
 					delta2 = prova1[i].Array[j].EndAddress - prova2[i].Array[j].EndAddress;
