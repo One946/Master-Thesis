@@ -59,8 +59,6 @@ extern TLS_KEY tls_key;
 
 int scCounter1 = 0; // counter used to identify order in syscall in entry
 int scCounter2 = 0; // counter used to identify order in syscall in entry
-int diffIndex = 0; // counter used to identify the regions changes 
-
 
 #define MAXSYSCALLS	0x200
 CHAR* syscallIDs[MAXSYSCALLS];
@@ -69,9 +67,9 @@ CHAR* syscallIDs[MAXSYSCALLS];
 //sysmap memRangArray2[500];
 /*SYSCALLS*/
 
-sysmap prova1[500];
-sysmap prova2[500];
-differences rIndex[100];
+sysmap memArrayEntry[1000];
+sysmap memArrayExit[1000];
+differences regUpdates[1000]; // structure to store memory changes, namely if a memory region is created or deleted
 
 /********************************************************************/
 /**************************Instrumentations**************************/
@@ -80,22 +78,21 @@ differences rIndex[100];
 // Helper method to print  information about the differences in memory regions before and after a syscall
 VOID printRegions() {
 	printf("different regions spotted! \n");
-
-	for (int i = 0; i < 100; i++) {
-		printf("rIndex[i].entryRID %d \n", rIndex[i].entryRID);
-		printf("rIndex[i].exitRID %d \n", rIndex[i].exitRID);
-		int EntryRegion = rIndex[i].Entry[rIndex[i].regIndex].RegionID;
-		int ExitRegion = rIndex[i].Exit[rIndex[i].regIndex].RegionID;
-		printf("rIndex[i].regIndex: %d, rIndex[i].syscallIndex: %d, i: %d \n ", rIndex[i].regIndex, rIndex[i].syscallIndex, i);
-		printf("EntryRegion: %d , ExitRegion: %d \n", EntryRegion, ExitRegion);
-		printf("Entry base address: %x , Entry max address: %x \n", rIndex[i].Entry[EntryRegion].StartAddress, rIndex[i].Entry[EntryRegion].EndAddress);
-		printf("Exit base address: %x , Exit max address: %x \n", rIndex[i].Exit[EntryRegion].StartAddress, rIndex[i].Exit[EntryRegion].EndAddress);
-		printf("----------------------------------------------------- \n");
+	for(int i=0; i<scCounter2;i++){
+		printf("++++++++++++++++++++++++++++++++++++++++\n");
+		printf("Syscall number:%d \n", i);
+		if (regUpdates[i].newRegions==0 && regUpdates[i].deletedRegions==0) {
+			printf("Same number of region newRegions:%d DeletedRegions :%d \n", regUpdates[i].newRegions, regUpdates[i].deletedRegions);
+		}
+		for (int j = 0; j < regUpdates[i].newRegions; j++) {
+			printf("regUpdates[i].Added[j].RegionID:%d , regUpdates[i].Added[j].Size:%d \n", regUpdates[i].Added[j].RegionID, regUpdates[i].Added[j].Size);
+			printf("regUpdates[i].Added[j].StartAddress:%x, regUpdates[i].Added[j].StartAddress:%x \n ", regUpdates[i].Added[j].StartAddress, regUpdates[i].Added[j].EndAddress);
+		}
+		for (int j = 0; j < regUpdates[i].deletedRegions; j++) {
+			printf("regUpdates[i].Deleted[j].RegionID:%d , regUpdates[i].Deleted[j].Size:%d \n", regUpdates[i].Deleted[j].RegionID, regUpdates[i].Deleted[j].Size);
+			printf("regUpdates[i].Deleted[j].StartAddress:%x, regUpdates[i].Deleted[j].StartAddress:%x \n ", regUpdates[i].Deleted[j].StartAddress, regUpdates[i].Deleted[j].EndAddress);
+		}
 	}
-	printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-	printf("First ENTRY address: %x , Last ENTRY address: %x \n", prova1[0].Array[0].StartAddress, prova1[0].Array[prova1[0].regionsSum].EndAddress);
-	printf("First EXIT address: %x , Last EXIT address: %x \n", prova2[0].Array[0].StartAddress, prova2[0].Array[prova2[0].regionsSum].EndAddress);
-	printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
 }
 
 // Method to spot differences between memory regions before and after a syscall
@@ -105,88 +102,55 @@ VOID changed() {
 	bool eq = 0; // variable to check if regions is equal in exit
 	ADDRINT delta1 = 0;
 	ADDRINT delta2 = 0;
-	int difIndex;  // index to count the different region and identify them
-	int prova1Max = 0; // max number of region of a prova1
+	bool found;
+	int newIndex;  // index to count the different region and identify them
+	int deletedIndex;
 	fflush(stdout);
 
 	for (int i = 0; i < scCounter1; i++) { //cicle on every syscall in the array
-		gt = prova1[i].regionsSum < prova2[i].regionsSum;
-		lt = prova1[i].regionsSum > prova2[i].regionsSum;
-		eq = prova1[i].regionsSum == prova2[i].regionsSum;
-		prova1Max = prova1[i].regionsSum - 1;
-
+		gt = memArrayEntry[i].regionsSum < memArrayExit[i].regionsSum;
+		lt = memArrayEntry[i].regionsSum > memArrayExit[i].regionsSum;
+		eq = memArrayEntry[i].regionsSum == memArrayExit[i].regionsSum;
 		if (gt) { //more region in exit than in entry
-			difIndex = 0;
-			for (int j = 0; j < prova2[i].regionsSum; j++) { //cicle on every region saved
-				/* if ((prova1[i].Array[j].StartAddress == prova2[i].Array[j].StartAddress) && (prova1[i].Array[j].EndAddress == prova2[i].Array[j].EndAddress)) {
-					continue;
-				}
-				if (prova1[i].regionsSum >= j) {
-					prova1Max = prova1[i].regionsSum - 1;
-				*/
-				for (int k = 0; k < prova1[i].regionsSum; k++) {
-
-					if ((prova2[i].Array[j].StartAddress == prova1[i].Array[k].StartAddress)
-						&& (prova2[i].Array[j].EndAddress == prova1[i].Array[k].EndAddress)
-					    && (prova2[i].Array[j].RegionID != prova1[i].Array[k].RegionID)) {
-						printf("prova2[i].Array[j].RegionID: %d , prova1[i].Array[k].RegionID: %d \n", prova2[i].Array[j].RegionID, prova1[i].Array[k].RegionID);
+			newIndex = 0;
+			for (int j = 0; j <= memArrayExit[i].regionsSum; j++) {
+				found = 0;
+				for (int k = 0; k <= memArrayEntry[i].regionsSum; k++) { // cycle on the memory map untill the end
+					if ((memArrayExit[i].Array[j].StartAddress == memArrayEntry[i].Array[k].StartAddress) && (memArrayExit[i].Array[j].EndAddress == memArrayEntry[i].Array[k].EndAddress)) { 
+						found = 1; // if i spot a known region, i break and keep looping on the exit array
+						break;
 					}
 				}
-					delta1 = prova1[i].Array[prova1Max].StartAddress - prova2[i].Array[j].StartAddress;
-					delta2 = prova1[i].Array[prova1Max].EndAddress - prova2[i].Array[j].EndAddress;
-
-					if (delta1 != 0 || delta2 != 0) {
-						//fill an array to store information about differences
-						rIndex[difIndex].entryRID = prova1[i].Array[prova1Max].RegionID;
-						rIndex[difIndex].exitRID = prova2[i].Array[j].RegionID;
-						rIndex[difIndex].Entry = prova1[i].Array;
-						rIndex[difIndex].Exit = prova2[i].Array;
-						rIndex[difIndex].regIndex = j;
-						rIndex[difIndex].syscallIndex = i;
-						rIndex[difIndex].syscallID = prova1[i].syscallID;
-						difIndex++;
-					}
-			//	}
-				else{
-					delta1 = prova1[i].Array[j].StartAddress - prova2[i].Array[j].StartAddress;
-					delta2 = prova1[i].Array[j].EndAddress - prova2[i].Array[j].EndAddress;
-
-					if (delta1 != 0 || delta2 != 0) {		
-						//fill an array to store information about differences
-						rIndex[difIndex].entryRID = prova1[i].Array[j].RegionID;
-						rIndex[difIndex].exitRID = prova2[i].Array[j].RegionID;
-						rIndex[difIndex].Entry = prova1[i].Array;
-						rIndex[difIndex].Exit = prova2[i].Array;
-						rIndex[difIndex].regIndex = j;
-						rIndex[difIndex].syscallIndex = i;
-						rIndex[difIndex].syscallID = prova1[i].syscallID;
-						difIndex++;
-					}
+				if (!found) { // if i spot a new region i add it to the regionUpdates array;
+					regUpdates[i].Added[newIndex].EndAddress = memArrayExit[i].Array[j].EndAddress;
+					regUpdates[i].Added[newIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
+					regUpdates[i].Added[newIndex].RegionID = memArrayExit[i].Array[j].RegionID;
+					regUpdates[i].Added[newIndex].Size = memArrayExit[i].Array[j].Size;
+					newIndex++;	
 				}
-				delta1 = 0;
-				delta2 = 0;
 			}
+			regUpdates[i].newRegions = newIndex;
 		}
-		
 		if (lt) {		//Less region in exit than in entry
-
-			for (int j = 0; j < prova2[i].regionsSum; j++) { //cicle on every region saved
-				if (prova1[i].Array[j].StartAddress != 0) {
-					delta1 = prova1[i].Array[j].StartAddress - prova2[i].Array[j].StartAddress;
-					delta2 = prova1[i].Array[j].EndAddress - prova2[i].Array[j].EndAddress;
-					
-					if (delta1 != 0 || delta2 != 0) {
-
+			deletedIndex = 0;
+			printf("less region in exit than in entry \n");
+			for (int j = 0; j <= memArrayEntry[i].regionsSum; j++) {
+				found = 0;
+				for (int k = 0; k <= memArrayExit[i].regionsSum; k++) {// cycle on the memory map untill the end
+					if ((memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress) && (memArrayEntry[i].Array[j].EndAddress == memArrayExit[i].Array[k].EndAddress)) {
+						found = 1; // if i spot a known region, i break and keep looping on the entry array
+						break;
 					}
-
-					delta1 = 0;
-					delta2 = 0;
+				}
+				if (!found) { //if a regions has been removed i put it in the memory update array
+					regUpdates[i].Deleted[deletedIndex].EndAddress = memArrayExit[i].Array[j].EndAddress;
+					regUpdates[i].Deleted[deletedIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
+					regUpdates[i].Deleted[deletedIndex].RegionID = memArrayExit[i].Array[j].RegionID;
+					regUpdates[i].Deleted[deletedIndex].Size = memArrayExit[i].Array[j].Size;
+					deletedIndex++;
 				}
 			}
-		}
-
-		if (eq) { //SAME NUMBER OF REGIONS
-
+			regUpdates[i].deletedRegions = deletedIndex;
 		}
 	}
 }
@@ -212,10 +176,10 @@ VOID funcEntry() {
 
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
-			prova1[scCounter1].Array[regions].EndAddress = regionend;
-			prova1[scCounter1].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			prova1[scCounter1].Array[regions].RegionID = regions;
-			prova1[scCounter1].Array[regions].Size = mbi.RegionSize;
+			memArrayEntry[scCounter1].Array[regions].EndAddress = regionend;
+			memArrayEntry[scCounter1].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memArrayEntry[scCounter1].Array[regions].RegionID = regions;
+			memArrayEntry[scCounter1].Array[regions].Size = mbi.RegionSize;
 			regions++;
 		}
 
@@ -223,8 +187,8 @@ VOID funcEntry() {
 		MyAddress += mbi.RegionSize;
 	}
 
-	prova1[scCounter1].regionsSum = regions - 1;
-	prova1[scCounter1].syscallID = scCounter1;
+	memArrayEntry[scCounter1].regionsSum = regions - 1;
+	memArrayEntry[scCounter1].syscallID = scCounter1;
 	scCounter1++;
 }
 
@@ -240,7 +204,7 @@ VOID funcExit() {
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
 	fflush(stdout);
-	
+
 	//cycle on the whole memroy, untill the end address
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
@@ -248,18 +212,18 @@ VOID funcExit() {
 		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
-			prova2[scCounter2].Array[regions].EndAddress = regionend;
-			prova2[scCounter2].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
-			prova2[scCounter2].Array[regions].RegionID = regions;
-			prova2[scCounter2].Array[regions].Size = mbi.RegionSize;
+			memArrayExit[scCounter2].Array[regions].EndAddress = regionend;
+			memArrayExit[scCounter2].Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			memArrayExit[scCounter2].Array[regions].RegionID = regions;
+			memArrayExit[scCounter2].Array[regions].Size = mbi.RegionSize;
 			regions++;
 
 		}
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-	 prova2[scCounter2].regionsSum = regions - 1;
-	 prova2[scCounter2].syscallID = scCounter2;
+	memArrayExit[scCounter2].regionsSum = regions - 1;
+	memArrayExit[scCounter2].syscallID = scCounter2;
 	scCounter2++;
 }
 
@@ -489,14 +453,8 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 
 
 VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
-	//pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
-	//syscall_t *sc = &tdata->sc;
-
 	funcExit();
 	changed();
-
-	//printf(" %x \n",(void*)sc->syscall_number);
-
 }
 
 //EnumSyscalls(); // parse ntdll for ordinals

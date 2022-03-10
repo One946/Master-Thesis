@@ -45,15 +45,11 @@ typedef struct {
 }sysmap;
 
 typedef struct {
-	MemoryRange* Entry; //array of memory regions in entry
-	MemoryRange* Exit; //array of memory regions in exity
-	int entryRID; // ID of region in Entry
-	int exitRID; // ID of region in Exit
-	int regIndex; //index of the array at which the region has been found, in most of the cases is same of the ID
-	int syscallIndex; //Index of the array of syscals at which differences has been found
-	int syscallID; //Id of the syscall of interest
-
-}differences;
+	MemoryRange Added[1000]; //array of memory regions
+	MemoryRange Deleted[1000]; //array of memory regions
+	int newRegions; // new regions counter
+	int deletedRegions; // deleted regions counter
+} differences; // structure to save memory changes
 
 /*Function headers */
 VOID printRegions();
