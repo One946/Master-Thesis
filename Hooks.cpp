@@ -80,17 +80,27 @@ VOID printRegions() {
 	printf("different regions spotted! \n");
 	for(int i=0; i<scCounter2;i++){
 		printf("++++++++++++++++++++++++++++++++++++++++\n");
-		printf("Syscall number:%d \n", i);
-		if (regUpdates[i].newRegions==0 && regUpdates[i].deletedRegions==0) {
-			printf("Same number of region newRegions:%d DeletedRegions :%d \n", regUpdates[i].newRegions, regUpdates[i].deletedRegions);
+		printf("Syscall number:%x, i:%d \n", memArrayEntry[i].syscalNumb,i);
+		if(regUpdates[i].newRegions){
+			for (int j = 0; j < regUpdates[i].newRegions; j++) {
+				printf("New Regions! \n");
+				printf("regUpdates[i].Added[j].RegionID:%d , regUpdates[i].Added[j].Size:%d \n", regUpdates[i].Added[j].RegionID, regUpdates[i].Added[j].Size);
+				printf("regUpdates[i].Added[j].StartAddress:%x, regUpdates[i].Added[j].EndAddress:%x \n", regUpdates[i].Added[j].StartAddress, regUpdates[i].Added[j].EndAddress);
+			}
 		}
-		for (int j = 0; j < regUpdates[i].newRegions; j++) {
-			printf("regUpdates[i].Added[j].RegionID:%d , regUpdates[i].Added[j].Size:%d \n", regUpdates[i].Added[j].RegionID, regUpdates[i].Added[j].Size);
-			printf("regUpdates[i].Added[j].StartAddress:%x, regUpdates[i].Added[j].StartAddress:%x \n ", regUpdates[i].Added[j].StartAddress, regUpdates[i].Added[j].EndAddress);
+		if(regUpdates[i].deletedRegions){
+			for (int j = 0; j < regUpdates[i].deletedRegions; j++) {
+				printf("Deleted Regions! \n");
+				printf("regUpdates[i].Deleted[j].RegionID:%d , regUpdates[i].Deleted[j].Size:%d \n", regUpdates[i].Deleted[j].RegionID, regUpdates[i].Deleted[j].Size);
+				printf("regUpdates[i].Deleted[j].StartAddress:%x, regUpdates[i].Deleted[j].EndAddress:%x \n", regUpdates[i].Deleted[j].StartAddress, regUpdates[i].Deleted[j].EndAddress);
+			}
 		}
-		for (int j = 0; j < regUpdates[i].deletedRegions; j++) {
-			printf("regUpdates[i].Deleted[j].RegionID:%d , regUpdates[i].Deleted[j].Size:%d \n", regUpdates[i].Deleted[j].RegionID, regUpdates[i].Deleted[j].Size);
-			printf("regUpdates[i].Deleted[j].StartAddress:%x, regUpdates[i].Deleted[j].StartAddress:%x \n ", regUpdates[i].Deleted[j].StartAddress, regUpdates[i].Deleted[j].EndAddress);
+		if (regUpdates[i].resizedRegions) {
+			for (int j = 0; j < regUpdates[i].resizedRegions; j++) {
+				printf("Resized Regions! \n");
+				printf("regUpdates[i].Resized[j].RegionID:%d , regUpdates[i].Resized[j].Size:%d \n", regUpdates[i].Resized[j].RegionID, regUpdates[i].Resized[j].Size);
+				printf("regUpdates[i].Resized[j].StartAddress:%x, regUpdates[i].Resized[j].EndAddress:%x \n", regUpdates[i].Resized[j].StartAddress, regUpdates[i].Resized[j].EndAddress);
+			}
 		}
 	}
 }
@@ -105,20 +115,37 @@ VOID changed() {
 	bool found;
 	int newIndex;  // index to count the different region and identify them
 	int deletedIndex;
+	int resizedIndex;
 	fflush(stdout);
 
 	for (int i = 0; i < scCounter1; i++) { //cicle on every syscall in the array
 		gt = memArrayEntry[i].regionsSum < memArrayExit[i].regionsSum;
 		lt = memArrayEntry[i].regionsSum > memArrayExit[i].regionsSum;
 		eq = memArrayEntry[i].regionsSum == memArrayExit[i].regionsSum;
+		resizedIndex = 0;
+
 		if (gt) { //more region in exit than in entry
 			newIndex = 0;
 			for (int j = 0; j <= memArrayExit[i].regionsSum; j++) {
 				found = 0;
 				for (int k = 0; k <= memArrayEntry[i].regionsSum; k++) { // cycle on the memory map untill the end
-					if ((memArrayExit[i].Array[j].StartAddress == memArrayEntry[i].Array[k].StartAddress) && (memArrayExit[i].Array[j].EndAddress == memArrayEntry[i].Array[k].EndAddress)) { 
-						found = 1; // if i spot a known region, i break and keep looping on the exit array
-						break;
+					if (memArrayExit[i].Array[j].StartAddress == memArrayEntry[i].Array[k].StartAddress) {
+						if (memArrayExit[i].Array[j].EndAddress != memArrayEntry[i].Array[k].EndAddress){
+						/*	printf("Ragion has been resized! \n");
+							printf("memArrayExit[i].Array[j].StartAddress:%x , memArrayExit[i].Array[j].EndAddress:%x \n", memArrayExit[i].Array[j].StartAddress, memArrayExit[i].Array[j].EndAddress);
+							printf("startAddress:%x newEndAddress:%x \n", memArrayEntry[i].Array[k].StartAddress, memArrayEntry[i].Array[k].EndAddress);
+						*/
+							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
+							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayEntry[i].Array[k].EndAddress;
+							regUpdates[i].Resized[resizedIndex].Size = memArrayEntry[i].Array[k].Size;
+							regUpdates[i].Resized[resizedIndex].RegionID = memArrayEntry[i].Array[k].RegionID;
+							resizedIndex++;
+
+						}
+						if (memArrayExit[i].Array[j].EndAddress == memArrayEntry[i].Array[k].EndAddress) {
+							found = 1; // if i spot a known region, i break and keep looping on the exit array
+							break;
+						}
 					}
 				}
 				if (!found) { // if i spot a new region i add it to the regionUpdates array;
@@ -130,16 +157,31 @@ VOID changed() {
 				}
 			}
 			regUpdates[i].newRegions = newIndex;
+		//	printf("More region in exit than in entry \n");
+		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
 		}
 		if (lt) {		//Less region in exit than in entry
 			deletedIndex = 0;
-			printf("less region in exit than in entry \n");
 			for (int j = 0; j <= memArrayEntry[i].regionsSum; j++) {
 				found = 0;
 				for (int k = 0; k <= memArrayExit[i].regionsSum; k++) {// cycle on the memory map untill the end
-					if ((memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress) && (memArrayEntry[i].Array[j].EndAddress == memArrayExit[i].Array[k].EndAddress)) {
-						found = 1; // if i spot a known region, i break and keep looping on the entry array
-						break;
+					if (memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress ) {
+						if (memArrayEntry[i].Array[j].EndAddress != memArrayExit[i].Array[k].EndAddress) {
+						/*	printf("||||Ragion has been resized! \n");
+							printf("i:%d, j:%d , k:%d \n", i, j, k);
+							printf("memArrayExit[i].Array[j].StartAddress:%x , memArrayExit[i].Array[j].EndAddress:%x \n", memArrayEntry[i].Array[j].StartAddress, memArrayEntry[i].Array[j].EndAddress);
+							printf("startAddress:%x newEndAddress:%x \n", memArrayExit[i].Array[k].StartAddress, memArrayExit[i].Array[k].EndAddress);
+						*/
+							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayEntry[i].Array[j].StartAddress;
+							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayExit[i].Array[k].EndAddress;
+							regUpdates[i].Resized[resizedIndex].Size = memArrayExit[i].Array[k].Size;
+							regUpdates[i].Resized[resizedIndex].RegionID = memArrayExit[i].Array[k].RegionID;
+							resizedIndex++;
+						}
+						if (memArrayEntry[i].Array[j].EndAddress == memArrayExit[i].Array[k].EndAddress) {
+							found = 1; // if i spot a known region, i break and keep looping on the entry array
+							break;
+						}
 					}
 				}
 				if (!found) { //if a regions has been removed i put it in the memory update array
@@ -151,7 +193,33 @@ VOID changed() {
 				}
 			}
 			regUpdates[i].deletedRegions = deletedIndex;
+		//	printf("less region in exit than in entry \n");
+		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
 		}
+
+		if (eq) {
+			for (int j = 0; j < memArrayEntry[i].regionsSum; j++) {
+				found = 0;
+				for (int k = 0; k <= memArrayExit[i].regionsSum; k++) {
+					if (memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress) {
+						if (memArrayEntry[i].Array[j].EndAddress != memArrayExit[i].Array[k].EndAddress) {
+							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayEntry[i].Array[j].StartAddress;
+							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayExit[i].Array[k].EndAddress;
+							regUpdates[i].Resized[resizedIndex].Size = memArrayExit[i].Array[k].Size;
+							regUpdates[i].Resized[resizedIndex].RegionID = memArrayExit[i].Array[k].RegionID;
+							resizedIndex++;
+						}
+						if (memArrayEntry[i].Array[j].EndAddress == memArrayExit[i].Array[k].EndAddress) {
+							found = 1; // if i spot a known region, i break and keep looping on the entry array
+							break;
+						}
+					}
+				}
+			}
+		//	printf("Same number of regions \n");
+		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
+		}
+		regUpdates[i].resizedRegions = resizedIndex;
 	}
 }
 
@@ -317,6 +385,7 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	syscall_t *sc = &tdata->sc;
 	sc->syscall_number = syscall_number;
 	printf("****************Syscall number: %x ****************\n", syscall_number);
+	memArrayEntry[scCounter1].syscalNumb = syscall_number;
 	funcEntry();
 
 

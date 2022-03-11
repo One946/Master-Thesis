@@ -40,6 +40,7 @@ typedef struct {
 
 typedef struct {
 	unsigned int syscallID;
+	unsigned int syscalNumb;
 	MemoryRange Array[1000]; //array of memory regions
 	int regionsSum; // index for looping on array
 }sysmap;
@@ -47,8 +48,11 @@ typedef struct {
 typedef struct {
 	MemoryRange Added[1000]; //array of memory regions
 	MemoryRange Deleted[1000]; //array of memory regions
+	MemoryRange Resized[10000];
 	int newRegions; // new regions counter
 	int deletedRegions; // deleted regions counter
+	int resizedRegions;
+	unsigned int syscallID;
 } differences; // structure to save memory changes
 
 /*Function headers */
