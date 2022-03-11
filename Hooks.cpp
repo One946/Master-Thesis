@@ -131,10 +131,6 @@ VOID changed() {
 				for (int k = 0; k <= memArrayEntry[i].regionsSum; k++) { // cycle on the memory map untill the end
 					if (memArrayExit[i].Array[j].StartAddress == memArrayEntry[i].Array[k].StartAddress) {
 						if (memArrayExit[i].Array[j].EndAddress != memArrayEntry[i].Array[k].EndAddress){
-						/*	printf("Ragion has been resized! \n");
-							printf("memArrayExit[i].Array[j].StartAddress:%x , memArrayExit[i].Array[j].EndAddress:%x \n", memArrayExit[i].Array[j].StartAddress, memArrayExit[i].Array[j].EndAddress);
-							printf("startAddress:%x newEndAddress:%x \n", memArrayEntry[i].Array[k].StartAddress, memArrayEntry[i].Array[k].EndAddress);
-						*/
 							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
 							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayEntry[i].Array[k].EndAddress;
 							regUpdates[i].Resized[resizedIndex].Size = memArrayEntry[i].Array[k].Size;
@@ -157,8 +153,6 @@ VOID changed() {
 				}
 			}
 			regUpdates[i].newRegions = newIndex;
-		//	printf("More region in exit than in entry \n");
-		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
 		}
 		if (lt) {		//Less region in exit than in entry
 			deletedIndex = 0;
@@ -167,11 +161,6 @@ VOID changed() {
 				for (int k = 0; k <= memArrayExit[i].regionsSum; k++) {// cycle on the memory map untill the end
 					if (memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress ) {
 						if (memArrayEntry[i].Array[j].EndAddress != memArrayExit[i].Array[k].EndAddress) {
-						/*	printf("||||Ragion has been resized! \n");
-							printf("i:%d, j:%d , k:%d \n", i, j, k);
-							printf("memArrayExit[i].Array[j].StartAddress:%x , memArrayExit[i].Array[j].EndAddress:%x \n", memArrayEntry[i].Array[j].StartAddress, memArrayEntry[i].Array[j].EndAddress);
-							printf("startAddress:%x newEndAddress:%x \n", memArrayExit[i].Array[k].StartAddress, memArrayExit[i].Array[k].EndAddress);
-						*/
 							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayEntry[i].Array[j].StartAddress;
 							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayExit[i].Array[k].EndAddress;
 							regUpdates[i].Resized[resizedIndex].Size = memArrayExit[i].Array[k].Size;
@@ -193,8 +182,6 @@ VOID changed() {
 				}
 			}
 			regUpdates[i].deletedRegions = deletedIndex;
-		//	printf("less region in exit than in entry \n");
-		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
 		}
 
 		if (eq) {
@@ -216,8 +203,6 @@ VOID changed() {
 					}
 				}
 			}
-		//	printf("Same number of regions \n");
-		//	printf("i:%d, resizedIndex:%d \n", i, resizedIndex);
 		}
 		regUpdates[i].resizedRegions = resizedIndex;
 	}
