@@ -20,55 +20,15 @@ extern int img_counter;
 extern mem_regions mem_array[100]; //array in which  informations about the images are stored
 extern int counter; //counter for instructions
 extern mem_map op_map;
-
-/*SYSCALLS*/
-unsigned int  NtAllocateVirtualMemory = 0x00000013;
-unsigned int  NtFreeVirtualMemory = 0x00000083;
-//unsigned int  NtAllocateVirtualMemoryEx = 0x00000084; NON ESISTE
-unsigned int  NtMapViewOfSection = 0x000000a8;
-unsigned int  NtUnmapViewOfSection = 0x00000181;
-unsigned int  NtCreateSection = 0x00000054;
-unsigned int NtOpenProcessTokenEx = 0x000000bf;
-unsigned int NtQueryInformationTransaction = 0x000000ed;
-unsigned int NtOpenKeyEx = 0x000000b6;
-unsigned int NtQueryValueKey = 0x0000010a;
-unsigned int NtClose = 0x00000032;
-unsigned int NtOpenKNtOpenRegistryTransactioney = 0x000000c0;
-unsigned int NtPssCaptureVaSpaceBulk = 0x00000d7;
-unsigned int NtOpenSemaphore = 0x000000c2;
-unsigned int NtQuerySection = 0x000000fe;
-unsigned int NtQueryAttributesFile = 0x000000d9;
-unsigned int NtOpenFile = 0x000000b3;
-unsigned int NtSetInformationResourceManager = 0x0000014d;
-unsigned int NtQueryInformationProcess = 0x000000ea;
-unsigned int NtQueryPerformanceCounter = 0x000000fb;
-unsigned int NtWriteFile = 0x0000018c;
-unsigned int NtTerminateProcess = 0x00000172;
-unsigned int NtQueryVirtualMemory = 0x0000010b;
-unsigned int NtRequestWaitReplyPort = 0x0000012b;
-unsigned int NtQueryVolumeInformationFile = 0x0000010c;
-unsigned int NtOpenDirectoryObject = 0x000000af;
-unsigned int NtCreateFile = 0x00000042;
-unsigned int NtCreateSemaphore = 0x00000055;
-unsigned int NtTestAlert = 0x00000175;
-unsigned int NtContinue = 0x0000003c;
-unsigned int NtQueryDirectoryFile = 0x000000df;
-unsigned int NtThawRegistry = 0x00000174;
-
 extern TLS_KEY tls_key;
-
-int scCounter1 = 0; // counter used to identify order in syscall in entry
-int scCounter2 = 0; // counter used to identify order in syscall in entry
 
 #define MAXSYSCALLS	0x200
 CHAR* syscallIDs[MAXSYSCALLS];
 
-//sysmap memRangArray1[500];
-//sysmap memRangArray2[500];
-/*SYSCALLS*/
-
-sysmap memArrayEntry[1000];
-sysmap memArrayExit[1000];
+int scCounter1 = 0; // counter used to identify order in syscall in entry
+int scCounter2 = 0; // counter used to identify order in syscall in entry
+sysmap memArrayEntry[1000]; // Entry array to store syscall informations
+sysmap memArrayExit[1000]; // Exit array to store syscall informations
 differences regUpdates[1000]; // structure to store memory changes, namely if a memory region is created or deleted
 
 /********************************************************************/
@@ -225,7 +185,7 @@ VOID funcEntry() {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE){ //&& mbi.Type != MEM_PRIVATE) {
 
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
@@ -262,7 +222,7 @@ VOID funcExit() {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE && mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE){ // && mbi.Type != MEM_PRIVATE) {
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
 			memArrayExit[scCounter2].Array[regions].EndAddress = regionend;
@@ -352,7 +312,6 @@ VOID HOOKS_NtMapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 VOID HOOKS_NtUnmapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std) {
 	printf("in HOOKS_NtUnmapViewOfSection_exit \n");
 }
-
 VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
 	pintool_tls* tdata = (pintool_tls*)calloc(1, sizeof(pintool_tls));
 	tls_key = PIN_CreateThreadDataKey(NULL);
@@ -369,139 +328,14 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
 	syscall_t *sc = &tdata->sc;
 	sc->syscall_number = syscall_number;
-	printf("****************Syscall number: %x ****************\n", syscall_number);
+	if (syscall_number > 0x200) {
+		printf("****************Syscall number: %x ****************\n", syscall_number);
+	}
+	if(syscall_number < 0x200){
+		printf("****************Syscall name: %s ****************\n", syscallIDs[syscall_number]);
+	}
 	memArrayEntry[scCounter1].syscalNumb = syscall_number;
 	funcEntry();
-
-
-	if (syscall_number == NtAllocateVirtualMemory) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-	}
-	if (syscall_number == NtFreeVirtualMemory) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtFreeVirtualMemory_entry(ctx, std);
-	}
-	if (syscall_number == NtMapViewOfSection) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtMapViewOfSection_entry(ctx, std);
-	}
-	if (syscall_number == NtUnmapViewOfSection) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtUnmapViewOfSection_entry(ctx, std);
-	}
-	if (syscall_number == NtCreateSection) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		HOOKS_NtCreateSection_entry(ctx, std);
-	}
-	if (syscall_number == NtOpenProcessTokenEx) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenProcessTokenEx \n");
-	}
-	if (syscall_number == NtQueryInformationTransaction) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryInformationTransaction \n");
-	}
-	if (syscall_number == NtOpenKeyEx) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenKeyEx	 \n");
-	}if (syscall_number == NtQueryValueKey) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryVirtualMemory \n");
-	}if (syscall_number == NtClose) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtClose \n");
-	}if (syscall_number == NtOpenKNtOpenRegistryTransactioney) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenKNtOpenRegistryTransactioney \n");
-	}if (syscall_number == NtPssCaptureVaSpaceBulk) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtPssCaptureVaSpaceBulk \n");
-	}if (syscall_number == NtOpenSemaphore) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenSemaphore \n");
-	}if (syscall_number == NtQuerySection) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQuerySection \n");
-	}if (syscall_number == NtQueryAttributesFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryAttributesFile \n");
-	}if (syscall_number == NtOpenFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenFile \n");
-	}if (syscall_number == NtSetInformationResourceManager) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtSetInformationResourceManager \n");
-	}if (syscall_number == NtQueryInformationProcess) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryInformationProcess \n");
-	}if (syscall_number == NtQueryPerformanceCounter) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryPerformanceCounter \n");
-	}if (syscall_number == NtWriteFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtWriteFile \n");
-	}if (syscall_number == NtTerminateProcess) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtTerminateProcess \n");
-	}if (syscall_number == NtQueryVirtualMemory) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryVirtualMemory \n");
-	}if (syscall_number == NtRequestWaitReplyPort) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtRequestWaitReplyPort \n");
-	}if (syscall_number == NtQueryVolumeInformationFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryVolumeInformationFile \n");
-	}
-	if (syscall_number == NtOpenDirectoryObject) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtOpenDirectoryObject \n");
-	}if (syscall_number == NtCreateFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtCreateFile \n");
-	}if (syscall_number == NtCreateSemaphore) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtCreateSemaphore \n");
-	}if (syscall_number == NtTestAlert) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtTestAlert \n");
-	}if (syscall_number == NtContinue) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtContinue \n");
-	}if (syscall_number == NtQueryDirectoryFile) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtQueryDirectoryFile \n");
-	}if (syscall_number == NtThawRegistry) { //NtAllocateVirtualMemory
-		//TraceFile << "sc->syscall_number " << (void*)sc->syscall_number << "\n";
-		//HOOKS_NtAllocateVirtualMemory_entry(ctx, std);
-		printf("NtThawRegistry \n");
-	}
 
 }
 
