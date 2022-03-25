@@ -195,11 +195,9 @@ VOID funcEntry() {
 			memArrayEntry[scCounter1].Array[regions].Size = mbi.RegionSize;
 			regions++;
 		}
-
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
-
 	memArrayEntry[scCounter1].regionsSum = regions - 1;
 	memArrayEntry[scCounter1].syscallID = scCounter1;
 	scCounter1++;
@@ -230,7 +228,6 @@ VOID funcExit() {
 			memArrayExit[scCounter2].Array[regions].RegionID = regions;
 			memArrayExit[scCounter2].Array[regions].Size = mbi.RegionSize;
 			regions++;
-
 		}
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
@@ -324,6 +321,7 @@ VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
 
 VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	// get the syscall number
+
 	ADDRINT syscall_number = PIN_GetSyscallNumber(ctx, std);
 	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
 	syscall_t *sc = &tdata->sc;

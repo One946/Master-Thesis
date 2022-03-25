@@ -22,7 +22,6 @@ KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out
 ofstream TraceFile;
 TLS_KEY tls_key= INVALID_TLS_KEY;
 
-
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
 {
 	TraceFile << name << "(" << filename << ")" << endl;
@@ -33,11 +32,12 @@ VOID CreateFileWafter(ADDRINT ret)
 }
 VOID Fini(INT32 code, VOID* v)
 {
+	// printRegions();
 	if (TraceFile.is_open())
 	{
 		TraceFile.close();
 	}
-	printRegions();
+
 }
 /* ===================================================================== */
 /* Print Help Message                                                    */
