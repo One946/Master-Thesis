@@ -38,17 +38,17 @@ differences regUpdates[1000]; // structure to store memory changes, namely if a 
 // Helper method to print  information about the differences in memory regions before and after a syscall
 VOID printRegions() {
 	printf("different regions spotted! \n");
-	for(int i=0; i<scCounter2;i++){
+	for (int i = 0; i < scCounter2; i++) {
 		printf("++++++++++++++++++++++++++++++++++++++++\n");
-		printf("Syscall number:%x, i:%d \n", memArrayEntry[i].syscalNumb,i);
-		if(regUpdates[i].newRegions){
+		printf("Syscall number:%x, i:%d \n", memArrayEntry[i].syscalNumb, i);
+		if (regUpdates[i].newRegions) {
 			for (int j = 0; j < regUpdates[i].newRegions; j++) {
 				printf("New Regions! \n");
 				printf("regUpdates[i].Added[j].RegionID:%d , regUpdates[i].Added[j].Size:%d \n", regUpdates[i].Added[j].RegionID, regUpdates[i].Added[j].Size);
 				printf("regUpdates[i].Added[j].StartAddress:%x, regUpdates[i].Added[j].EndAddress:%x \n", regUpdates[i].Added[j].StartAddress, regUpdates[i].Added[j].EndAddress);
 			}
 		}
-		if(regUpdates[i].deletedRegions){
+		if (regUpdates[i].deletedRegions) {
 			for (int j = 0; j < regUpdates[i].deletedRegions; j++) {
 				printf("Deleted Regions! \n");
 				printf("regUpdates[i].Deleted[j].RegionID:%d , regUpdates[i].Deleted[j].Size:%d \n", regUpdates[i].Deleted[j].RegionID, regUpdates[i].Deleted[j].Size);
@@ -90,7 +90,7 @@ VOID changed() {
 				found = 0;
 				for (int k = 0; k <= memArrayEntry[i].regionsSum; k++) { // cycle on the memory map untill the end
 					if (memArrayExit[i].Array[j].StartAddress == memArrayEntry[i].Array[k].StartAddress) {
-						if (memArrayExit[i].Array[j].EndAddress != memArrayEntry[i].Array[k].EndAddress){
+						if (memArrayExit[i].Array[j].EndAddress != memArrayEntry[i].Array[k].EndAddress) {
 							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
 							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayEntry[i].Array[k].EndAddress;
 							regUpdates[i].Resized[resizedIndex].Size = memArrayEntry[i].Array[k].Size;
@@ -109,7 +109,7 @@ VOID changed() {
 					regUpdates[i].Added[newIndex].StartAddress = memArrayExit[i].Array[j].StartAddress;
 					regUpdates[i].Added[newIndex].RegionID = memArrayExit[i].Array[j].RegionID;
 					regUpdates[i].Added[newIndex].Size = memArrayExit[i].Array[j].Size;
-					newIndex++;	
+					newIndex++;
 				}
 			}
 			regUpdates[i].newRegions = newIndex;
@@ -119,7 +119,7 @@ VOID changed() {
 			for (int j = 0; j <= memArrayEntry[i].regionsSum; j++) {
 				found = 0;
 				for (int k = 0; k <= memArrayExit[i].regionsSum; k++) {// cycle on the memory map untill the end
-					if (memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress ) {
+					if (memArrayEntry[i].Array[j].StartAddress == memArrayExit[i].Array[k].StartAddress) {
 						if (memArrayEntry[i].Array[j].EndAddress != memArrayExit[i].Array[k].EndAddress) {
 							regUpdates[i].Resized[resizedIndex].StartAddress = memArrayEntry[i].Array[j].StartAddress;
 							regUpdates[i].Resized[resizedIndex].EndAddress = memArrayExit[i].Array[k].EndAddress;
@@ -185,7 +185,7 @@ VOID funcEntry() {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE){ //&& mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE) { //&& mbi.Type != MEM_PRIVATE) {
 
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
@@ -220,7 +220,7 @@ VOID funcExit() {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE){ // && mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE) { // && mbi.Type != MEM_PRIVATE) {
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
 			memArrayExit[scCounter2].Array[regions].EndAddress = regionend;
@@ -323,17 +323,17 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	// get the syscall number
 
 	ADDRINT syscall_number = PIN_GetSyscallNumber(ctx, std);
-	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
-	syscall_t *sc = &tdata->sc;
-	sc->syscall_number = syscall_number;
+//	pintool_tls *tdata = static_cast<pintool_tls*>(PIN_GetThreadData(tls_key, thread_id));
+//	syscall_t *sc = &tdata->sc;
+//	sc->syscall_number = syscall_number;
 	if (syscall_number > 0x200) {
 		printf("****************Syscall number: %x ****************\n", syscall_number);
 	}
-	if(syscall_number < 0x200){
+	if (syscall_number < 0x200) {
 		printf("****************Syscall name: %s ****************\n", syscallIDs[syscall_number]);
 	}
-	memArrayEntry[scCounter1].syscalNumb = syscall_number;
-	funcEntry();
+//	memArrayEntry[scCounter1].syscalNumb = syscall_number;
+//	funcEntry();
 
 }
 
@@ -346,4 +346,4 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 //EnumSyscalls(); // parse ntdll for ordinals
 //PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
 //PIN_AddThreadStartFunction(OnThreadStart, NULL);
-//PIN_AddSyscallExitFunction(SyscallExit, NULL);
+//PIN_AddSyscallExitFunction(SyscallExit, NULL);	

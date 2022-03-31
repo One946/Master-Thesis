@@ -10,6 +10,7 @@ namespace W {
 }
 using namespace std;
 
+//index for memory function
 enum {
 	VirtualQuery_INDEX = 0,
 	VirtualQueryEx_INDEX,

@@ -20,8 +20,7 @@ using namespace std;
 //*******************************************************************
 KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
 ofstream TraceFile;
-TLS_KEY tls_key= INVALID_TLS_KEY;
-
+TLS_KEY tls_key = INVALID_TLS_KEY;
 VOID CreateFileWArg(CHAR * name, wchar_t * filename)
 {
 	TraceFile << name << "(" << filename << ")" << endl;
@@ -38,6 +37,7 @@ VOID Fini(INT32 code, VOID* v)
 		TraceFile.close();
 	}
 
+
 }
 /* ===================================================================== */
 /* Print Help Message                                                    */
@@ -51,9 +51,30 @@ INT32 Usage()
 /* Main                                                                  */
 /* ===================================================================== */
 VOID SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v) {
-	HOOKS_SyscallEntry(thread_id, ctx, std);
-}VOID SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v) {
-	HOOKS_SyscallExit(thread_id, ctx, std);
+	//HOOKS_SyscallEntry(thread_id, ctx, std);
+	pintool_tls* tdata;
+	tdata= (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);	
+	if (tdata->sc.syscall_number > 0x200) {
+		printf("syscall numb > 0x200 \n");
+		return;
+	}
+	tdata->counter1++;
+	tdata->sc.syscall_number= PIN_GetSyscallNumber(ctx, std);
+	//PIN_SetThreadData(tls_key,&tdata , thread_id);
+}
+VOID SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v) {
+	//HOOKS_SyscallExit(thread_id, ctx, std);
+
+	pintool_tls* tdata;
+	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
+	if (tdata->sc.syscall_number > 0x200) { 
+		printf("syscall numb > 0x200 \n");
+		printf("counter1:%d, counter2: %d \n", tdata->counter1, tdata->counter2);
+		return;
+	}
+	tdata->counter2++;
+	printf("counter1:%d, counter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
+
 }
 
 int main(int argc, char* argv[]) {

@@ -28,6 +28,8 @@ typedef struct _syscall_t {
 typedef void(*syscall_hook)(syscall_t *sc, CONTEXT *ctx, SYSCALL_STANDARD std);
 typedef struct {
 	syscall_t sc;
+	int counter1 = 0;
+	int counter2 = 0;
 } pintool_tls;
 
 //delta
