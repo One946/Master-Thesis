@@ -25,14 +25,8 @@ typedef struct _syscall_t {
 		};
 	};
 } syscall_t;
-typedef void(*syscall_hook)(syscall_t *sc, CONTEXT *ctx, SYSCALL_STANDARD std);
-typedef struct {
-	syscall_t sc;
-	int counter1 = 0;
-	int counter2 = 0;
-} pintool_tls;
 
-//delta
+typedef void(*syscall_hook)(syscall_t *sc, CONTEXT *ctx, SYSCALL_STANDARD std);
 typedef struct {
 	ADDRINT StartAddress;
 	ADDRINT EndAddress;
@@ -57,6 +51,13 @@ typedef struct {
 	unsigned int syscallID;
 } differences; // structure to save memory changes
 
+typedef struct {
+	syscall_t sc;
+	int counter1 = 0;
+	int counter2 = 0;
+	sysmap memArrayEntry;
+	sysmap memArrayExit;
+} pintool_tls;
 /*Function headers */
 VOID printRegions();
 VOID changed();
@@ -69,4 +70,4 @@ VOID HOOKS_NtMapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std);
 VOID HOOKS_NtUnmapViewOfSection_entry(CONTEXT *ctx, SYSCALL_STANDARD std);
 VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *);
 VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std);
-VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, ADDRINT scNumber);
+VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std);

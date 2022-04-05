@@ -48,34 +48,10 @@ INT32 Usage()
 /* Main                                                                  */
 /* ===================================================================== */
 VOID SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v) {
-	
-	pintool_tls* tdata;
-	tdata= (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
-	tdata->sc.syscall_number = PIN_GetSyscallNumber(ctx, std);
-	if (tdata->sc.syscall_number == 0x10e6) {
-		return;
-	}
-	if (tdata->sc.syscall_number > 0x200) {
-		printf("syscall numb > 0x200 \n");
-		return;
-	}
 	HOOKS_SyscallEntry(thread_id, ctx, std);
-	tdata->counter1++;
 }
 VOID SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v) {
-	pintool_tls* tdata;
-	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
-	ADDRINT scNumber = tdata->sc.syscall_number;
-	if (tdata->sc.syscall_number > 0x200) { 
-		printf("syscall numb > 0x200 \n");
-		printf("counter1:%d, counter2: %d \n", tdata->counter1, tdata->counter2);
-		return;
-	}
-	tdata->counter2++;
-	printf("counter1:%d, counter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
-	HOOKS_SyscallExit(thread_id, ctx, std, scNumber);
-
-
+	HOOKS_SyscallExit(thread_id, ctx, std);
 }
 
 int main(int argc, char* argv[]) {
