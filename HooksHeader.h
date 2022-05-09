@@ -30,8 +30,10 @@ typedef void(*syscall_hook)(syscall_t *sc, CONTEXT *ctx, SYSCALL_STANDARD std);
 typedef struct {
 	ADDRINT StartAddress;
 	ADDRINT EndAddress;
+	ADDRINT OldEndAddress;
 	int RegionID;
 	W::SIZE_T Size;
+	W::DWORD AllProtect;
 }MemoryRange;
 
 typedef struct {

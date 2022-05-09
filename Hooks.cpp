@@ -26,64 +26,80 @@ extern TLS_KEY tls_key;
 CHAR* syscallIDs[MAXSYSCALLS];
 
 differences regUpdates; // structure to store memory changes, namely if a memory region is created or deleted
-ADDRINT arg1,arg2,arg3;
+ADDRINT arg1, arg2, arg3;
+ADDRINT *AVMarg, *FVMarg, *PVMarg, *MVSarg, *UVSarg;
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
 
 VOID fillArg(CONTEXT *ctx, SYSCALL_STANDARD std, ADDRINT syscall_number) {
 
-	switch (syscall_number){
+	switch (syscall_number) {
 	case(0x00d7)://NtProtectVirtualMemory
-		arg1 = PIN_GetSyscallArgument(ctx, std, 1);
+		PVMarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 1);
+		arg1 = (ADDRINT)*PVMarg;
+		break;
 	case(0x0013)://NtAllocateVirtualMemory
-		arg1 = PIN_GetSyscallArgument(ctx, std, 1);
-	case(0x0032)://ntclose
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x0040):// ntcreateevent
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x004a): // ntcreatemutant
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x0054):// ntcreatesection
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		AVMarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 1);
+		arg1 = (ADDRINT)*AVMarg;
+		printf("AVMarg:%x, *AVMarg:%x, arg1:%x \n", AVMarg, *AVMarg, arg1);
+		break;
+		/*case(0x0032)://ntclose
+			arg1 = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x0040):// ntcreateevent
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x004a): // ntcreatemutant
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);*/
+			//case(0x0054):// ntcreatesection
+			//	arg1 = PIN_GetSyscallArgument(ctx, std, 0);
 	case(0x0083)://ntfreevirtualmemory
-		arg1 = PIN_GetSyscallArgument(ctx, std, 1);
+		FVMarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 1);
+		arg1 = (ADDRINT)*FVMarg;
+		break;
 	case(0x00a8):// ntmapviewofsection
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2); // also 5 6
-		arg2 = PIN_GetSyscallArgument(ctx, std, 5); // also 5 6
-		arg3 = PIN_GetSyscallArgument(ctx, std, 6); // also 5 6
-	case(0x00b3):// ntopenfile
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x00b6):// ntopenkey
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x00b7):// ntopenkeyEx
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x00bf): // ntopenprocesstoken
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x00c0): // ntopenprocesstokenex
-		arg1 = PIN_GetSyscallArgument(ctx, std, 3);
-	case(0x00c2): // ntopensection
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x00d9): // ntqueryattributesfile
-		arg1 = PIN_GetSyscallArgument(ctx, std, 1);
-	case(0x00ea): // ntqueryinformationprocess
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x00ed): // ntqueryinformationtoken
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x00fb): // ntqueryperformancecounter
-		arg1 = PIN_GetSyscallArgument(ctx, std, 0);
-	case(0x00fe): // ntquerysection
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x0105): // ntquerysysteminformation
-		arg1 = PIN_GetSyscallArgument(ctx, std, 1);
-	case(0x010a): // ntqueryvaluekey
-		arg1 = PIN_GetSyscallArgument(ctx, std, 3);
-	case(0x010c): // ntqueryvolumeinformationfile
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x012b): // ntrequestwaitreplyport
-		arg1 = PIN_GetSyscallArgument(ctx, std, 2);
-	case(0x0177): // nttracecontrol
-		arg1 = PIN_GetSyscallArgument(ctx, std, 3);
+		MVSarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 2); // also 5 6
+		arg1 = (ADDRINT)*MVSarg;
+		//	arg2 = PIN_GetSyscallArgument(ctx, std, 5); // also 5 6
+		//	arg3 = PIN_GetSyscallArgument(ctx, std, 6); // also 5 6
+		break;
+	case(0x0181):
+		UVSarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 2); // also 5 6
+		arg1 = (ADDRINT)*UVSarg;
+		//	arg2 = PIN_GetSyscallArgument(ctx, std, 5); // also 5 6
+		//	arg3 = PIN_GetSyscallArgument(ctx, std, 6); // also 5 6
+		break;
+		/*case(0x00b3):// ntopenfile
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x00b6):// ntopenkey
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x00b7):// ntopenkeyEx
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x00bf): // ntopenprocesstoken
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x00c0): // ntopenprocesstokenex
+			arg1 = PIN_GetSyscallArgument(ctx, std, 3);
+		case(0x00c2): // ntopensection
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x00d9): // ntqueryattributesfile
+			arg1 = PIN_GetSyscallArgument(ctx, std, 1);
+		case(0x00ea): // ntqueryinformationprocess
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x00ed): // ntqueryinformationtoken
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x00fb): // ntqueryperformancecounter
+			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
+		case(0x00fe): // ntquerysection
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x0105): // ntquerysysteminformation
+			arg1 = PIN_GetSyscallArgument(ctx, std, 1);
+		case(0x010a): // ntqueryvaluekey
+			arg1 = PIN_GetSyscallArgument(ctx, std, 3);
+		case(0x010c): // ntqueryvolumeinformationfile
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x012b): // ntrequestwaitreplyport
+			arg1 = PIN_GetSyscallArgument(ctx, std, 2);
+		case(0x0177): // nttracecontrol
+			arg1 = PIN_GetSyscallArgument(ctx, std, 3);*/
 	default:
 		break;
 	}
@@ -147,139 +163,175 @@ VOID changed(pintool_tls* tdata) {
 	int resizedIndex;
 	fflush(stdout);
 
-		gt = tdata->memArrayEntry.regionsSum < tdata->memArrayExit.regionsSum;
-		lt = tdata->memArrayEntry.regionsSum > tdata->memArrayExit.regionsSum;
-		eq = tdata->memArrayEntry.regionsSum == tdata->memArrayExit.regionsSum;
-		resizedIndex = 0;
+	gt = tdata->memArrayEntry.regionsSum < tdata->memArrayExit.regionsSum;
+	lt = tdata->memArrayEntry.regionsSum > tdata->memArrayExit.regionsSum;
+	eq = tdata->memArrayEntry.regionsSum == tdata->memArrayExit.regionsSum;
+	resizedIndex = 0;
+	if (gt) { //more region in exit than in entry
+		printf("more region in exit than in entry \n");
+		printf("tdata->memArrayEntry.regionsSum: %d \n", tdata->memArrayEntry.regionsSum);
+		printf("tdata->memArrayExit.regionsSum: %d \n", tdata->memArrayExit.regionsSum);
+		newIndex = 0;
+		for (int j = 0; j <= tdata->memArrayExit.regionsSum; j++) {
+			found = 0;
+			for (int k = 0; k <= tdata->memArrayEntry.regionsSum; k++) { // cycle on the memory map untill the end
 
-		if (gt) { //more region in exit than in entry
-			printf("more region in exit than in entry \n");
-			printf("tdata->memArrayEntry.regionsSum: %d \n", tdata->memArrayEntry.regionsSum);
+				if (tdata->memArrayExit.Array[j].StartAddress == tdata->memArrayEntry.Array[k].StartAddress) {
+					if (tdata->memArrayExit.Array[j].EndAddress != tdata->memArrayEntry.Array[k].EndAddress) {
+						regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
+						regUpdates.Resized[resizedIndex].OldEndAddress = tdata->memArrayEntry.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayExit.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].Size = tdata->memArrayExit.Array[k].Size;
+						regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayExit.Array[k].RegionID;
 
-			printf("tdata->memArrayExit.regionsSum: %d \n", tdata->memArrayExit.regionsSum);
-			newIndex = 0;
-			for (int j = 0; j <= tdata->memArrayExit.regionsSum; j++) {
-				found = 0;
-				for (int k = 0; k <= tdata->memArrayEntry.regionsSum; k++) { // cycle on the memory map untill the end
-					if (tdata->memArrayExit.Array[j].StartAddress == tdata->memArrayEntry.Array[k].StartAddress) {
-						if (tdata->memArrayExit.Array[j].EndAddress != tdata->memArrayEntry.Array[k].EndAddress) {
-							regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
-							regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayEntry.Array[k].EndAddress;
-							regUpdates.Resized[resizedIndex].Size = tdata->memArrayEntry.Array[k].Size;
-							regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayEntry.Array[k].RegionID;
+						printf("regUpdates.Resized[resizedIndex].StartAddress: %x \n", regUpdates.Resized[resizedIndex].StartAddress);
+						printf("regUpdates.Resized[resizedIndex].EndAddress: %x \n", regUpdates.Resized[resizedIndex].EndAddress);
+						printf("regUpdates.Resized[resizedIndex].OldEndAddress: %x \n", regUpdates.Resized[resizedIndex].OldEndAddress);
+						printf("regUpdates.Resized[resizedIndex].RegionID: %d \n", regUpdates.Resized[resizedIndex].RegionID);
+						printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
+						resizedIndex++;
+						found = 1;
 
-							resizedIndex++;
-							found = 1;
-						}
-						if (tdata->memArrayExit.Array[j].EndAddress == tdata->memArrayEntry.Array[k].EndAddress) {
-							found = 1; // if i spot a known region, i break and keep looping on the exit array
-							break;
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
 						}
 					}
+					if (tdata->memArrayExit.Array[j].EndAddress == tdata->memArrayEntry.Array[k].EndAddress) {
+						found = 1; // if i spot a known region, i break and keep looping on the exit array
+						break;
+					}
 				}
-				if (!found) { // if i spot a new region i add it to the regionUpdates array;
+			}
+			if (!found) { // if i spot a new region i add it to the regionUpdates array;
+				printf("j:%d \n", j);
+				regUpdates.Added[newIndex].EndAddress = tdata->memArrayExit.Array[j].EndAddress;
+				regUpdates.Added[newIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
+				regUpdates.Added[newIndex].RegionID = tdata->memArrayExit.Array[j].RegionID;
+				regUpdates.Added[newIndex].Size = tdata->memArrayExit.Array[j].Size;
+
+				printf("\nregUpdates.Added[newIndex].StartAddress: %x \n", regUpdates.Added[newIndex].StartAddress);
+				printf("regUpdates.Added[newIndex].EndAddress: %x \n", regUpdates.Added[newIndex].EndAddress);
+				printf("regUpdates.Added[newIndex].RegionID: %d \n", regUpdates.Added[newIndex].RegionID);
+				printf("regUpdates.Added[newIndex].Size: %d \n\n", regUpdates.Added[newIndex].Size);
+
+				newIndex++;
+
+				if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
 					if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
-						printf("Ret addres: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
-					}
-					if (tdata->memArrayEntry.syscalNumb == 0x00a8) {
-						if (arg2 <= tdata->memArrayExit.Array[j].EndAddress && arg2 >= tdata->memArrayExit.Array[j].StartAddress) {
-							printf("Ret addres: %x, StartAddress: %x , EndAddress: %x \n", arg2, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
-						}
-						if (arg3 <= tdata->memArrayExit.Array[j].EndAddress && arg3 >= tdata->memArrayExit.Array[j].StartAddress) {
-							printf("Ret addres: %x, StartAddress: %x , EndAddress: %x \n", arg3, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
-						}
-					}
-					printf("j:%d \n", j);
-					regUpdates.Added[newIndex].EndAddress = tdata->memArrayExit.Array[j].EndAddress;
-					regUpdates.Added[newIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
-					regUpdates.Added[newIndex].RegionID = tdata->memArrayExit.Array[j].RegionID;
-					regUpdates.Added[newIndex].Size = tdata->memArrayExit.Array[j].Size;
-
-					printf("\nregUpdates.Added[newIndex].StartAddress: %x \n", regUpdates.Added[newIndex].StartAddress);
-					printf("regUpdates.Added[newIndex].EndAddress: %x \n", regUpdates.Added[newIndex].EndAddress);
-					printf("regUpdates.Added[newIndex].RegionID: %d \n", regUpdates.Added[newIndex].RegionID);
-					printf("regUpdates.Added[newIndex].Size: %d \n\n", regUpdates.Added[newIndex].Size);
-
-
-					newIndex++;
-	
-
+						printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+					}// add other ifs for following arguments
 				}
+				/*
+				if (tdata->memArrayEntry.syscalNumb == 0x00a8) {
+					if (arg2 <= tdata->memArrayExit.Array[j].EndAddress && arg2 >= tdata->memArrayExit.Array[j].StartAddress) {
+						printf("Ret addres: %x, StartAddress: %x , EndAddress: %x \n", arg2, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+					}
+					if (arg3 <= tdata->memArrayExit.Array[j].EndAddress && arg3 >= tdata->memArrayExit.Array[j].StartAddress) {
+						printf("Ret addres: %x, StartAddress: %x , EndAddress: %x \n", arg3, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+					}
+				}*/
 			}
-			regUpdates.newRegions = newIndex;
 		}
-		
-		if (lt) {		//Less region in exit than in entry
-			printf("Less region in exit than in entry \n");
-			printf("tdata->memArrayEntry.regionsSum: %d \n", tdata->memArrayEntry.regionsSum);
-			printf("tdata->memArrayExit.regionsSum: %d \n", tdata->memArrayExit.regionsSum);
-			deletedIndex = 0;
-			for (int j = 0; j <= tdata->memArrayEntry.regionsSum; j++) {
-				found = 0;
-				for (int k = 0; k <= tdata->memArrayExit.regionsSum; k++) {// cycle on the memory map untill the end
-					if (tdata->memArrayEntry.Array[j].StartAddress == tdata->memArrayExit.Array[k].StartAddress) {
-						if (tdata->memArrayEntry.Array[j].EndAddress != tdata->memArrayExit.Array[k].EndAddress) {
-							regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayEntry.Array[j].StartAddress;
-							regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayExit.Array[k].EndAddress;
-							regUpdates.Resized[resizedIndex].Size = tdata->memArrayExit.Array[k].Size;
-							regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayExit.Array[k].RegionID;
+		regUpdates.newRegions = newIndex;
+	}
+	if (lt) {		//Less region in exit than in entry
+		printf("Less region in exit than in entry \n");
+		printf("tdata->memArrayEntry.regionsSum: %d \n", tdata->memArrayEntry.regionsSum);
+		printf("tdata->memArrayExit.regionsSum: %d \n", tdata->memArrayExit.regionsSum);
+		deletedIndex = 0;
+		for (int j = 0; j <= tdata->memArrayEntry.regionsSum; j++) {
+			found = 0;
+			for (int k = 0; k <= tdata->memArrayExit.regionsSum; k++) {// cycle on the memory map untill the end
+				if (tdata->memArrayEntry.Array[j].StartAddress == tdata->memArrayExit.Array[k].StartAddress) {
+					if (tdata->memArrayEntry.Array[j].EndAddress != tdata->memArrayExit.Array[k].EndAddress) {
+						regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
+						regUpdates.Resized[resizedIndex].OldEndAddress = tdata->memArrayEntry.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayExit.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].Size = tdata->memArrayExit.Array[k].Size;
+						regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayExit.Array[k].RegionID;
 
-							printf("\nregUpdates.Resized[resizedIndex].StartAddress: %x \n", regUpdates.Resized[resizedIndex].StartAddress);
-							printf("regUpdates.Resized[resizedIndex].EndAddress: %x \n", regUpdates.Resized[resizedIndex].EndAddress);
-							printf("regUpdates.Resized[resizedIndex].RegionID: %d \n", regUpdates.Resized[resizedIndex].RegionID);
-							printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
-
-							found = 1;
-							resizedIndex++;
-						}
-						if (tdata->memArrayEntry.Array[j].EndAddress == tdata->memArrayExit.Array[k].EndAddress) {
-							found = 1; // if i spot a known region, i break and keep looping on the entry array
-							break;
+						printf("\nregUpdates.Resized[resizedIndex].StartAddress: %x \n", regUpdates.Resized[resizedIndex].StartAddress);
+						printf("regUpdates.Resized[resizedIndex].EndAddress: %x \n", regUpdates.Resized[resizedIndex].EndAddress);
+						printf("regUpdates.Resized[resizedIndex].OldEndAddress: %x \n", regUpdates.Resized[resizedIndex].OldEndAddress);
+						printf("regUpdates.Resized[resizedIndex].RegionID: %d \n", regUpdates.Resized[resizedIndex].RegionID);
+						printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
+						found = 1;
+						resizedIndex++;
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
 						}
 					}
-				}
-				if (!found) { //if a regions has been removed i put it in the memory update array
-					regUpdates.Deleted[deletedIndex].EndAddress = tdata->memArrayExit.Array[j].EndAddress;
-					regUpdates.Deleted[deletedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
-					regUpdates.Deleted[deletedIndex].RegionID = tdata->memArrayExit.Array[j].RegionID;
-					regUpdates.Deleted[deletedIndex].Size = tdata->memArrayExit.Array[j].Size;
-					printf("\nregUpdates.Deleted[deletedIndex].StartAddress: %x \n", regUpdates.Deleted[deletedIndex].StartAddress);
-					printf("regUpdates.Deleted[deletedIndex].EndAddress: %x \n", regUpdates.Deleted[deletedIndex].EndAddress);
-					printf("regUpdates.Deleted[deletedIndex].RegionID : %d \n", regUpdates.Deleted[deletedIndex].RegionID);
-					printf("regUpdates.Deleted[deletedIndex].Size: %d \n\n", regUpdates.Deleted[deletedIndex].Size);
-					deletedIndex++;
-				}
-			}
-			regUpdates.deletedRegions = deletedIndex;
-		}
-
-		if (eq) {
-			for (int j = 0; j < tdata->memArrayEntry.regionsSum; j++) {
-				found = 0;
-				for (int k = 0; k <= tdata->memArrayExit.regionsSum; k++) {
-					if (tdata->memArrayEntry.Array[j].StartAddress == tdata->memArrayExit.Array[k].StartAddress) {
-						if (tdata->memArrayEntry.Array[j].EndAddress != tdata->memArrayExit.Array[k].EndAddress) {
-							regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayEntry.Array[j].StartAddress;
-							regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayExit.Array[k].EndAddress;
-							regUpdates.Resized[resizedIndex].Size = tdata->memArrayExit.Array[k].Size;
-							regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayExit.Array[k].RegionID;
-							found = 1;	
-
-							printf("\nregUpdates.Resized[resizedIndex].StartAddress: %x \n", regUpdates.Resized[resizedIndex].StartAddress);
-							printf("regUpdates.Resized[resizedIndex].EndAddress: %x \n", regUpdates.Resized[resizedIndex].EndAddress);
-							printf("regUpdates.Resized[resizedIndex].RegionID: %d \n", regUpdates.Resized[resizedIndex].RegionID);
-							printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
-							resizedIndex++;
-						}
-						if (tdata->memArrayEntry.Array[j].EndAddress == tdata->memArrayExit.Array[k].EndAddress) {
-							found = 1; // if i spot a known region, i break and keep looping on the entry array
-							break;
-						}
+					if (tdata->memArrayEntry.Array[j].EndAddress == tdata->memArrayExit.Array[k].EndAddress) {
+						found = 1; // if i spot a known region, i break and keep looping on the entry array
+						break;
 					}
 				}
 			}
+			if (!found) { //if a regions has been removed i put it in the memory update array
+				regUpdates.Deleted[deletedIndex].EndAddress = tdata->memArrayExit.Array[j].EndAddress;
+				regUpdates.Deleted[deletedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
+				regUpdates.Deleted[deletedIndex].RegionID = tdata->memArrayExit.Array[j].RegionID;
+				regUpdates.Deleted[deletedIndex].Size = tdata->memArrayExit.Array[j].Size;
+				printf("\nregUpdates.Deleted[deletedIndex].StartAddress: %x \n", regUpdates.Deleted[deletedIndex].StartAddress);
+				printf("regUpdates.Deleted[deletedIndex].EndAddress: %x \n", regUpdates.Deleted[deletedIndex].EndAddress);
+				printf("regUpdates.Deleted[deletedIndex].RegionID : %d \n", regUpdates.Deleted[deletedIndex].RegionID);
+				printf("regUpdates.Deleted[deletedIndex].Size: %d \n\n", regUpdates.Deleted[deletedIndex].Size);
+				deletedIndex++;
+				if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+					if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+						printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+					}// add other ifs for following arguments
+				}
+			}
 		}
-		regUpdates.resizedRegions = resizedIndex;
+		regUpdates.deletedRegions = deletedIndex;
+	}
+
+	if (eq) {
+		printf("same numb of regions \n");
+		for (int j = 0; j < tdata->memArrayEntry.regionsSum; j++) {
+			found = 0;
+			for (int k = 0; k <= tdata->memArrayExit.regionsSum; k++) {
+				if (tdata->memArrayEntry.Array[j].StartAddress == tdata->memArrayExit.Array[k].StartAddress) {
+					if (tdata->memArrayEntry.Array[j].EndAddress != tdata->memArrayExit.Array[k].EndAddress) {
+						regUpdates.Resized[resizedIndex].StartAddress = tdata->memArrayExit.Array[j].StartAddress;
+						regUpdates.Resized[resizedIndex].OldEndAddress = tdata->memArrayEntry.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].EndAddress = tdata->memArrayExit.Array[k].EndAddress;
+						regUpdates.Resized[resizedIndex].Size = tdata->memArrayExit.Array[k].Size;
+						regUpdates.Resized[resizedIndex].RegionID = tdata->memArrayExit.Array[k].RegionID;
+
+
+						printf("\nregUpdates.Resized[resizedIndex].StartAddress: %x \n", regUpdates.Resized[resizedIndex].StartAddress);
+						printf("regUpdates.Resized[resizedIndex].EndAddress: %x \n", regUpdates.Resized[resizedIndex].EndAddress);
+						printf("regUpdates.Resized[resizedIndex].OldEndAddress: %x \n", regUpdates.Resized[resizedIndex].OldEndAddress);
+						printf("regUpdates.Resized[resizedIndex].RegionID: %d \n", regUpdates.Resized[resizedIndex].RegionID);
+						printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
+						found = 1;
+						resizedIndex++;
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
+						}
+					}
+					if (tdata->memArrayEntry.Array[j].EndAddress == tdata->memArrayExit.Array[k].EndAddress) {
+						found = 1; // if i spot a known region, i break and keep looping on the entry array
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+	regUpdates.resizedRegions = resizedIndex;
 }
 
 // function to enumerate memory regions before a syscall is executed
@@ -306,6 +358,7 @@ VOID funcEntry(pintool_tls* tdata) {
 			tdata->memArrayEntry.Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
 			tdata->memArrayEntry.Array[regions].RegionID = regions;
 			tdata->memArrayEntry.Array[regions].Size = mbi.RegionSize;
+			tdata->memArrayEntry.Array[regions].AllProtect = mbi.AllocationProtect;
 			regions++;
 		}
 		size += mbi.RegionSize;
@@ -338,6 +391,7 @@ VOID funcExit(pintool_tls* tdata) {
 			tdata->memArrayExit.Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
 			tdata->memArrayExit.Array[regions].RegionID = regions;
 			tdata->memArrayExit.Array[regions].Size = mbi.RegionSize;
+			tdata->memArrayExit.Array[regions].AllProtect = mbi.AllocationProtect;
 			regions++;
 		}
 		size += mbi.RegionSize;
@@ -429,7 +483,6 @@ VOID OnThreadStart(THREADID tid, CONTEXT *ctxt, INT32, VOID *) {
 
 VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	// get the syscall number
-
 	pintool_tls* tdata;
 	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
 	tdata->sc.syscall_number = PIN_GetSyscallNumber(ctx, std);
@@ -453,25 +506,18 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 		tdata->memArrayEntry.syscallID = tdata->counter1;
 		tdata->counter1++;
 	}
-
 }
-
 
 VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//retrive thread data
 	pintool_tls* tdata;
 	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
-
 	if (tdata->sc.syscall_number > 0x200) {// if syscall is not NTdll
 		tdata->counter2++;
-		printf("counter1:%d, counter2: %d \n", tdata->counter1, tdata->counter2);
+		printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
 		return;
 	}
 	else {
-		printf("! tdata->sc.syscall_number:%x \n", tdata->sc.syscall_number);
-		if(tdata->sc.syscall_number == 0x0013){
-		printf("allocate virtual memory arg: %x \n", arg1);
-		}
 		tdata->memArrayExit.syscalNumb = tdata->sc.syscall_number;
 		tdata->memArrayExit.syscallID = tdata->counter2;
 		funcExit(tdata);
@@ -479,13 +525,8 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	}
 	tdata->counter2++;
 	printf("tdata->memArrayEntry.regionsSum :%d , tdata->memArrayExit.regionsSum:%d \n", tdata->memArrayEntry.regionsSum, tdata->memArrayExit.regionsSum);
-	printf("counter1:%d, counter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
-
-
+	printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
 	//reset status
-	arg1 = 0;
-	arg2 = 0;
-	arg3 = 0;
 	for (int i = 0; i < tdata->memArrayEntry.regionsSum; i++) {
 		tdata->memArrayEntry.Array[i].StartAddress = 0;
 		tdata->memArrayEntry.Array[i].EndAddress = 0;
@@ -500,7 +541,7 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	}
 	tdata->memArrayEntry.syscallID = 0;
 	tdata->memArrayEntry.syscalNumb = 0;
-	tdata->memArrayEntry.regionsSum = 0;	
+	tdata->memArrayEntry.regionsSum = 0;
 	tdata->memArrayExit.syscallID = 0;
 	tdata->memArrayExit.syscalNumb = 0;
 	tdata->memArrayExit.regionsSum = 0;
