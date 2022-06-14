@@ -27,7 +27,7 @@ CHAR* syscallIDs[MAXSYSCALLS];
 
 differences regUpdates; // structure to store memory changes, namely if a memory region is created or deleted
 ADDRINT arg1, arg2, arg3;
-ADDRINT *AVMarg, *FVMarg, *PVMarg, *MVSarg, *UVSarg;
+ADDRINT *AVMarg, *FVMarg, *PVMarg, *MVSarg, *UVSarg; //variables to save value of arguments of AllocateVirtualMemory, FreeVirtualMemory, PrtectVirtualMemory, MapViewOfSection, UnMapViewOfSection
 /********************************************************************/
 /**************************Instrumentations**************************/
 /********************************************************************/
@@ -55,18 +55,23 @@ VOID fillArg(CONTEXT *ctx, SYSCALL_STANDARD std, ADDRINT syscall_number) {
 	case(0x0083)://ntfreevirtualmemory
 		FVMarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 1);
 		arg1 = (ADDRINT)*FVMarg;
+
+		printf("FVMarg:%x, *FVMarg:%x, arg1:%x \n", FVMarg, *FVMarg, arg1);
 		break;
 	case(0x00a8):// ntmapviewofsection
 		MVSarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 2); // also 5 6
 		arg1 = (ADDRINT)*MVSarg;
 		//	arg2 = PIN_GetSyscallArgument(ctx, std, 5); // also 5 6
 		//	arg3 = PIN_GetSyscallArgument(ctx, std, 6); // also 5 6
+		printf("MVSarg:%x, *MVSarg:%x, arg1:%x \n", MVSarg, *MVSarg, arg1);
 		break;
-	case(0x0181):
+	case(0x0181)://NtUnmapViewOfSection
 		UVSarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 2); // also 5 6
 		arg1 = (ADDRINT)*UVSarg;
 		//	arg2 = PIN_GetSyscallArgument(ctx, std, 5); // also 5 6
 		//	arg3 = PIN_GetSyscallArgument(ctx, std, 6); // also 5 6
+		printf("UVSarg:%x, *UVSarg:%x, arg1:%x \n", UVSarg, *UVSarg, arg1);
+
 		break;
 		/*case(0x00b3):// ntopenfile
 			arg1 = PIN_GetSyscallArgument(ctx, std, 0);
@@ -281,7 +286,15 @@ VOID changed(pintool_tls* tdata) {
 				printf("regUpdates.Deleted[deletedIndex].RegionID : %d \n", regUpdates.Deleted[deletedIndex].RegionID);
 				printf("regUpdates.Deleted[deletedIndex].Size: %d \n\n", regUpdates.Deleted[deletedIndex].Size);
 				deletedIndex++;
-				if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+				if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x00a8) {
+					if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+						printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+					}// add other ifs for following arguments
+				}
+				if (tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x0181) {
+					if (arg1 <= tdata->memArrayEntry.Array[j].EndAddress && arg1 >= tdata->memArrayEntry.Array[j].StartAddress) {
+						printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayEntry.Array[j].StartAddress, tdata->memArrayEntry.Array[j].EndAddress);
+					}// add other ifs for following arguments
 					if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
 						printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
 					}// add other ifs for following arguments
@@ -312,17 +325,34 @@ VOID changed(pintool_tls* tdata) {
 						printf("regUpdates.Resized[resizedIndex].Size: %d \n\n", regUpdates.Resized[resizedIndex].Size);
 						found = 1;
 						resizedIndex++;
-						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x00a8) {
 							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
 								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
+						}
+						if (tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayEntry.Array[j].EndAddress && arg1 >= tdata->memArrayEntry.Array[j].StartAddress) {
+								printf("ENTRY arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayEntry.Array[j].StartAddress, tdata->memArrayEntry.Array[j].EndAddress);
+							}// add other ifs for following arguments
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("EXIT arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
 							}// add other ifs for following arguments
 						}
 					}
 					if (tdata->memArrayEntry.Array[j].EndAddress == tdata->memArrayExit.Array[k].EndAddress) {
 						found = 1; // if i spot a known region, i break and keep looping on the entry array
-						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x00a8 || tdata->sc.syscall_number == 0x0181) {
+						if (tdata->sc.syscall_number == 0x00d7 || tdata->sc.syscall_number == 0x0013 || tdata->sc.syscall_number == 0x00a8) {
 							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
 								printf("arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
+							}// add other ifs for following arguments
+						}
+						if (tdata->sc.syscall_number == 0x0083 || tdata->sc.syscall_number == 0x0181) {
+							if (arg1 <= tdata->memArrayEntry.Array[j].EndAddress && arg1 >= tdata->memArrayEntry.Array[j].StartAddress) {
+								printf("j:%d \n",j);
+								printf("ENTRY arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayEntry.Array[j].StartAddress, tdata->memArrayEntry.Array[j].EndAddress);
+							}// add other ifs for following arguments
+							if (arg1 <= tdata->memArrayExit.Array[j].EndAddress && arg1 >= tdata->memArrayExit.Array[j].StartAddress) {
+								printf("EXIT arg1: %x, StartAddress: %x , EndAddress: %x \n", arg1, tdata->memArrayExit.Array[j].StartAddress, tdata->memArrayExit.Array[j].EndAddress);
 							}// add other ifs for following arguments
 						}
 						break;
@@ -351,7 +381,7 @@ VOID funcEntry(pintool_tls* tdata) {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE) { //&& mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE) {
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
 			tdata->memArrayEntry.Array[regions].EndAddress = regionend;
@@ -384,7 +414,7 @@ VOID funcExit(pintool_tls* tdata) {
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
 		if ((maxAddr && maxAddr >= mbi.BaseAddress) || end <= (ADDRINT)mbi.BaseAddress) break;
 		maxAddr = mbi.BaseAddress;
-		if (mbi.State != MEM_FREE) { // && mbi.Type != MEM_PRIVATE) {
+		if (mbi.State != MEM_FREE) {
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
 			tdata->memArrayExit.Array[regions].EndAddress = regionend;
