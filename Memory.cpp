@@ -1,5 +1,6 @@
 #include "pin.H"
 #include "MemoryHeader.h"
+#include "itree.h"
 #include <iostream>
 
 namespace W {
@@ -32,6 +33,8 @@ enum {
 //*******************************************************************
 //GLOBAL VARIABLES
 //*******************************************************************
+// tree to store dlls addresses
+itreenode_t* itree = NULL;
 //KNOB< string > KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "migatte2.out", "specify file name");
 //ofstream TraceFile;
 int img_counter = 0;
@@ -743,22 +746,38 @@ VOID MemAlloc(IMG img, VOID *v) {
 /**************************Instrumentations**************************/
 /********************************************************************/
 VOID parse_funcsyms(IMG img, VOID *v) {
-	/*
-	W::BOOL bResult;
-	W::HANDLE hHeap;
-	W::ULONG HeapInformation;
-	hHeap = W::GetProcessHeap();
-	bResult = W::HeapQueryInformation(hHeap,
-		W::HeapCompatibilityInformation,
-		&HeapInformation,
-		sizeof(HeapInformation),
-		NULL);
-	if (bResult == FALSE) {
-			TraceFile << "Failed to retrieve heap features with LastError" << W::GetLastError() << ". \n";
-	}
-	TraceFile<< "HeapCompatibilityInformation is: "<< HeapInformation << " \n";
-	*/
 	if (!IMG_Valid(img)) return;
+	if (IMG_IsMainExecutable(img)) return; // we only want to track Windows DLLs
+	//insert in itre
+	const char* imgName = IMG_Name(img).c_str();
+	char* data = strdup(imgName);
+
+	PIN_LockClient();
+	int verify = (itree == NULL);
+	if (itree == NULL) {
+		itree = itree_init(IMG_LowAddress(img), IMG_HighAddress(img), (void*)data);
+		bool isnull = (itree == NULL);
+		if (isnull) { // if tree is still null
+			printf("Fail to init tree at dll: %s \n", data);
+		}
+		else {
+			printf("Good init  for Dll %s \n", data);
+			printf("IMG_LowAddress, :%x, IMG_HighAddress: %x \n", IMG_LowAddress(img), IMG_HighAddress(img));
+
+		}
+	}
+	else {
+		bool success = itree_insert(itree, IMG_LowAddress(img), IMG_HighAddress(img), (void*)data);
+		if (!success) {
+			printf("Duplicate range insartion for Dll %s \n", data);
+		}
+		else {
+			printf("Good range insartion for Dll %s \n", data);
+			printf("IMG_LowAddress, :%x, IMG_HighAddress: %x \n", IMG_LowAddress(img), IMG_HighAddress(img));
+
+		}
+	}
+	PIN_UnlockClient();
 	W::MEMORY_BASIC_INFORMATION memInfo;
 	//building up an array in which i store valuable informations about the images
 	mem_array[img_counter].id = IMG_Id(img) - 1;
@@ -771,11 +790,30 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 	mem_array[img_counter].unloaded = 0;
 	img_counter++;
 	cout << IMG_Name(img) << " is beeing loaded \n";
-	MemAlloc(img, 0);
-	//EnumSyscalls();
 }
 
 VOID ImageUnload(IMG img, VOID* v) {
+	printf("AAAAAAAAAAAA \n");
+	ADDRINT imgStart = IMG_LowAddress(img);
+	ADDRINT imgEnd = IMG_HighAddress(img);
+	cout << IMG_Name(img) << " \n";
+	itreenode_t *node = itree_search(itree, imgStart);
+	bool verify = (node != NULL);
+	printf("is node to be unload found: %d \n", verify);
+	
+	if (verify) {
+		//printf("IMG_Name: %s \n", node->data);
+		cout << "IMG_Name: " << IMG_Name(img) << " \n";
+		
+		if (imgStart == node->start_addr && imgEnd == node->end_addr) {
+			
+			printf("Unloading DLL %s \n", node->data);
+			itree = itree_delete(itree, imgStart, imgEnd);
+		}
+		else {
+			printf("Abnormal unload: desired");
+		}
+	}
 	int index = 0;
 	for (int i = 0; i < img_counter; i++) {
 		if (IMG_Id(img) - 1 == mem_array[i].id) {
@@ -792,21 +830,7 @@ VOID exitFunc() {
 	}
 }
 
-/*
-VOID Fini(INT32 code, VOID* v)
-{
-	if (TraceFile.is_open())
-	{
-		TraceFile << "************************************* \n";
-		for (int i = 0; i < img_counter; i++) {
-			TraceFile << "img name: " << mem_array[i].name << " img ID: " << mem_array[i].id << " is: " << mem_array[i].unloaded << " \n";
-			TraceFile << " img high " << mem_array[i].high << " img low " << mem_array[i].low << "\n";
-		}
-		TraceFile.close();
-	}
-}
 
 //	IMG_AddInstrumentFunction(parse_funcsyms, 0);
 //	IMG_AddUnloadFunction(ImageUnload, 0);
 //	PIN_AddSyscallEntryFunction(sysnum, 0);
-*/

@@ -60,7 +60,8 @@ int main(int argc, char* argv[]) {
 	// Initialize pin
 	if (PIN_Init(argc, argv)) return Usage();
 	TraceFile.open(KnobOutputFile.Value().c_str());
-	//IMG_AddUnloadFunction(ImageUnload, 0);
+	IMG_AddInstrumentFunction(parse_funcsyms, NULL);
+	IMG_AddUnloadFunction(ImageUnload, 0);
 	EnumSyscalls(); // parse ntdll for ordinals
 	PIN_AddSyscallEntryFunction(SyscallEntry, NULL);
 	PIN_AddSyscallExitFunction(SyscallExit, NULL);

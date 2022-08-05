@@ -1,6 +1,8 @@
 #include "pin.H"
 #include "HooksHeader.h"
-#include "MemoryHeader.h"	
+#include "MemoryHeader.h"
+#include "itree.h"
+
 //#include "Memory.cpp"
 
 
@@ -21,7 +23,7 @@ extern mem_regions mem_array[100]; //array in which  informations about the imag
 extern int counter; //counter for instructions
 extern mem_map op_map;
 extern TLS_KEY tls_key;
-
+extern itreenode_t* itree;
 #define MAXSYSCALLS	0x200
 CHAR* syscallIDs[MAXSYSCALLS];
 
@@ -516,32 +518,90 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	pintool_tls* tdata;
 	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
 	tdata->sc.syscall_number = PIN_GetSyscallNumber(ctx, std);
+	//retrive stack pointer
+	ADDRINT *ESP = (ADDRINT*)PIN_GetContextReg(ctx, REG_STACK_PTR);
+	//search stack pointer in interval tree ranges
+	ADDRINT ra = *((ADDRINT*)ESP + 1);
+	itreenode_t* node = itree_search(itree, ra);
+	int isNodeNull = (node == NULL);
+	
+	fillArg(ctx, std, tdata->sc.syscall_number);
 
-	if (tdata->sc.syscall_number > 0x200) {
-		printf("****************Syscall number: %x ****************\n", tdata->sc.syscall_number);
-		if (tdata->sc.syscall_number == 0x10e6) {
-			return;
+	if (isNodeNull) {
+		printf("ENTRY address NOT found in node \n");
+		if (tdata->sc.syscall_number > 0x200) {
+			printf("****************Syscall number: %x ****************\n", tdata->sc.syscall_number);
+			if (tdata->sc.syscall_number == 0x10e6) {
+				return;
+			}
+			tdata->memArrayEntry.syscalNumb = tdata->sc.syscall_number;
+			//fillArg(ctx, std, tdata->sc.syscall_number);
+			funcEntry(tdata);
+			tdata->memArrayEntry.syscallID = tdata->counter1;
+			tdata->counter1++;
 		}
-		tdata->memArrayEntry.syscalNumb = tdata->sc.syscall_number;
-		fillArg(ctx, std, tdata->sc.syscall_number);
-		funcEntry(tdata);
-		tdata->memArrayEntry.syscallID = tdata->counter1;
-		tdata->counter1++;
+		if (tdata->sc.syscall_number < 0x200) {
+			printf("****************Syscall name: %s ****************\n", syscallIDs[tdata->sc.syscall_number]);
+			tdata->memArrayEntry.syscalNumb = tdata->sc.syscall_number;
+			//fillArg(ctx, std, tdata->sc.syscall_number);
+			funcEntry(tdata);
+			tdata->memArrayEntry.syscallID = tdata->counter1;
+			tdata->counter1++;
+		}
 	}
-	if (tdata->sc.syscall_number < 0x200) {
-		printf("****************Syscall name: %s ****************\n", syscallIDs[tdata->sc.syscall_number]);
-		tdata->memArrayEntry.syscalNumb = tdata->sc.syscall_number;
-		fillArg(ctx, std, tdata->sc.syscall_number);
-		funcEntry(tdata);
-		tdata->memArrayEntry.syscallID = tdata->counter1;
+	else {
+		printf("------------------------------- \n");
+		if (tdata->sc.syscall_number < 0x200) {
+			printf("****************Syscall name: %s ****************\n", syscallIDs[tdata->sc.syscall_number]);
+		}
+		printf("address found in node \n");
+		printf("Syscall originated in %s  ESP=0x%x RA==0x%x \n", node->data, *ESP, ra);
+		printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
 		tdata->counter1++;
+		return;
 	}
+
 }
 
 VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//retrive thread data
 	pintool_tls* tdata;
-	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);
+	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);	
+	//retrive stack pointer
+	ADDRINT *RIP = (ADDRINT*)PIN_GetContextReg(ctx, REG_INST_PTR);
+	//retrive stack pointer
+	ADDRINT *ESP = (ADDRINT*)PIN_GetContextReg(ctx, REG_STACK_PTR);
+	//search stack pointer in interval tree ranges
+	ADDRINT ra = *((ADDRINT*)ESP + 1);
+	//search stack pointer in interval tree ranges
+	itreenode_t* node = itree_search(itree, *ESP);
+
+	printf("arg1: 0x%x, arg2: 0x%x, arg3: 0x%x \n", arg1, arg2, arg3);
+
+	int isNodeNull = (node == NULL);
+	if (isNodeNull) {
+		if (tdata->sc.syscall_number == 0x003c) {
+			printf("ntcontinue \n");
+			int check;
+			itreenode_t* node2 = itree_search(itree, *RIP);
+			check = (node2 == NULL);
+			if (check) {
+				printf("node NOT found using RIP \n");
+			}
+			else {
+				printf("node found using RIP \n");
+			}
+			return;
+		}
+		printf("EXIT node NOT found \n");
+	}
+	else {
+		printf("address found in node \n");
+		printf("Syscall originated in %s  ESP=0x%x RA==0x%x \n", node->data, *ESP, ra);
+		printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
+		tdata->counter2++;
+		return;
+	}
 	if (tdata->sc.syscall_number > 0x200) {// if syscall is not NTdll
 		tdata->counter2++;
 		printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
