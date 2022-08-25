@@ -793,7 +793,6 @@ VOID parse_funcsyms(IMG img, VOID *v) {
 }
 
 VOID ImageUnload(IMG img, VOID* v) {
-	printf("AAAAAAAAAAAA \n");
 	ADDRINT imgStart = IMG_LowAddress(img);
 	ADDRINT imgEnd = IMG_HighAddress(img);
 	cout << IMG_Name(img) << " \n";
@@ -802,7 +801,6 @@ VOID ImageUnload(IMG img, VOID* v) {
 	printf("is node to be unload found: %d \n", verify);
 	
 	if (verify) {
-		//printf("IMG_Name: %s \n", node->data);
 		cout << "IMG_Name: " << IMG_Name(img) << " \n";
 		
 		if (imgStart == node->start_addr && imgEnd == node->end_addr) {
@@ -829,8 +827,3 @@ VOID exitFunc() {
 		cout << " img high " << (void*) mem_array[i].high << " img low " << (void*)mem_array[i].low << "\n";
 	}
 }
-
-
-//	IMG_AddInstrumentFunction(parse_funcsyms, 0);
-//	IMG_AddUnloadFunction(ImageUnload, 0);
-//	PIN_AddSyscallEntryFunction(sysnum, 0);

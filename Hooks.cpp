@@ -44,7 +44,7 @@ VOID fillArg(CONTEXT *ctx, SYSCALL_STANDARD std, ADDRINT syscall_number) {
 	case(0x0013)://NtAllocateVirtualMemory
 		AVMarg = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 1);
 		arg1 = (ADDRINT)*AVMarg;
-		printf("AVMarg:%x, *AVMarg:%x, arg1:%x \n", AVMarg, *AVMarg, arg1);
+		//printf("AVMarg:%x, *AVMarg:%x, arg1:%x \n", AVMarg, *AVMarg, arg1);
 		break;
 		/*case(0x0032)://ntclose
 			arg1 = (ADDRINT *)PIN_GetSyscallArgument(ctx, std, 0);
@@ -377,7 +377,6 @@ VOID funcEntry(pintool_tls* tdata) {
 	int regions = 0;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
-	fflush(stdout);
 
 	//cycle on the whole memroy, untill the end address
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
@@ -410,7 +409,6 @@ VOID funcExit(pintool_tls* tdata) {
 	int regions = 0;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
-	fflush(stdout);
 
 	//cycle on the whole memroy, untill the end address
 	while (numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi))) {
@@ -429,6 +427,32 @@ VOID funcExit(pintool_tls* tdata) {
 		size += mbi.RegionSize;
 		MyAddress += mbi.RegionSize;
 	}
+	tdata->memArrayExit.regionsSum = regions - 1;
+}
+
+VOID addKuserData(pintool_tls* tdata) {
+	printf("add kuserdata \n");
+	W::MEMORY_BASIC_INFORMATION mbi;
+	W::SIZE_T numBytes;
+	W::DWORD MyAddress = 0x7ffe0000;
+	int regions = 0;
+	ADDRINT regionend = 0;
+	W::SIZE_T size = 0;
+
+	//cycle on the whole memroy, untill the end address
+	numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
+		if (numBytes) {
+			printf("mbi.BaseAddress: 0x%x, regionend: 0x%x, \n",(ADDRINT)mbi.BaseAddress, regionend);
+			// if memory is used store information about that memory in an array
+			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
+			tdata->memArrayExit.Array[regions].EndAddress = regionend;
+			tdata->memArrayExit.Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
+			tdata->memArrayExit.Array[regions].RegionID = regions;
+			tdata->memArrayExit.Array[regions].Size = mbi.RegionSize;
+			tdata->memArrayExit.Array[regions].AllProtect = mbi.AllocationProtect;
+		}
+		size += mbi.RegionSize;
+		MyAddress += mbi.RegionSize;
 	tdata->memArrayExit.regionsSum = regions - 1;
 }
 
@@ -528,7 +552,7 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	fillArg(ctx, std, tdata->sc.syscall_number);
 
 	if (isNodeNull) {
-		printf("ENTRY address NOT found in node \n");
+		printf("ENTRY address NOT found in tree \n");
 		if (tdata->sc.syscall_number > 0x200) {
 			printf("****************Syscall number: %x ****************\n", tdata->sc.syscall_number);
 			if (tdata->sc.syscall_number == 0x10e6) {
@@ -578,9 +602,9 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 
 	printf("arg1: 0x%x, arg2: 0x%x, arg3: 0x%x \n", arg1, arg2, arg3);
 
-	int isNodeNull = (node == NULL);
-	if (isNodeNull) {
-		if (tdata->sc.syscall_number == 0x003c) {
+	int isNodeNull = (node == NULL); 
+	if (isNodeNull) {//if the stackpointer is found
+		if (tdata->sc.syscall_number == 0x003c) { //check if it is ntcontinue
 			printf("ntcontinue \n");
 			int check;
 			itreenode_t* node2 = itree_search(itree, *RIP);
@@ -593,29 +617,34 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 			}
 			return;
 		}
-		printf("EXIT node NOT found \n");
+		printf("EXIT node NOT found in tree\n");
+
+		if (tdata->sc.syscall_number > 0x200) {// if syscall is not NTdll
+			tdata->counter2++;
+			printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
+			return;
+		}
+		else {
+			printf("in else prima di changed \n");
+			tdata->memArrayExit.syscalNumb = tdata->sc.syscall_number;
+			tdata->memArrayExit.syscallID = tdata->counter2;
+			funcExit(tdata);
+			changed(tdata);
+			tdata->counter2++;
+			printf("fefiffooooo \n");
+			addKuserData(tdata);
+			printf("tdata->memArrayEntry.regionsSum :%d , tdata->memArrayExit.regionsSum:%d \n", tdata->memArrayEntry.regionsSum, tdata->memArrayExit.regionsSum);
+			printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
+		}
 	}
 	else {
-		printf("address found in node \n");
+		printf("address found in node returning\n");
 		printf("Syscall originated in %s  ESP=0x%x RA==0x%x \n", node->data, *ESP, ra);
 		printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
 		tdata->counter2++;
 		return;
 	}
-	if (tdata->sc.syscall_number > 0x200) {// if syscall is not NTdll
-		tdata->counter2++;
-		printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
-		return;
-	}
-	else {
-		tdata->memArrayExit.syscalNumb = tdata->sc.syscall_number;
-		tdata->memArrayExit.syscallID = tdata->counter2;
-		funcExit(tdata);
-		changed(tdata);
-	}
-	tdata->counter2++;
-	printf("tdata->memArrayEntry.regionsSum :%d , tdata->memArrayExit.regionsSum:%d \n", tdata->memArrayEntry.regionsSum, tdata->memArrayExit.regionsSum);
-	printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
+	
 	//reset status
 	for (int i = 0; i < tdata->memArrayEntry.regionsSum; i++) {
 		tdata->memArrayEntry.Array[i].StartAddress = 0;
