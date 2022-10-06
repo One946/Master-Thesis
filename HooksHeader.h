@@ -44,9 +44,9 @@ typedef struct {
 }sysmap;
 
 typedef struct {
-	MemoryRange Added[1000]; //array of memory regions
-	MemoryRange Deleted[1000]; //array of memory regions
-	MemoryRange Resized[10000];
+	MemoryRange Added[1000]; //array of Added memory regions
+	MemoryRange Deleted[1000]; //array of Deleted memory regions
+	MemoryRange Resized[10000]; //array of Resized memory regions
 	int newRegions; // new regions counter
 	int deletedRegions; // deleted regions counter
 	int resizedRegions;

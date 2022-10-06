@@ -168,7 +168,6 @@ VOID changed(pintool_tls* tdata) {
 	int newIndex;  // index to count the different region and identify them
 	int deletedIndex;
 	int resizedIndex;
-	fflush(stdout);
 
 	gt = tdata->memArrayEntry.regionsSum < tdata->memArrayExit.regionsSum;
 	lt = tdata->memArrayEntry.regionsSum > tdata->memArrayExit.regionsSum;
@@ -435,16 +434,16 @@ VOID addKuserData(pintool_tls* tdata) {
 	W::MEMORY_BASIC_INFORMATION mbi;
 	W::SIZE_T numBytes;
 	W::DWORD MyAddress = 0x7ffe0000;
-	int regions = 0;
+	int regions = tdata->memArrayExit.regionsSum + 1;
 	ADDRINT regionend = 0;
 	W::SIZE_T size = 0;
 
 	//cycle on the whole memroy, untill the end address
 	numBytes = W::VirtualQuery((W::LPCVOID)MyAddress, &mbi, sizeof(mbi));
 		if (numBytes) {
-			printf("mbi.BaseAddress: 0x%x, regionend: 0x%x, \n",(ADDRINT)mbi.BaseAddress, regionend);
 			// if memory is used store information about that memory in an array
 			regionend = (ADDRINT)mbi.BaseAddress + mbi.RegionSize - 1;
+			printf("mbi.BaseAddress: 0x%x, regionend: 0x%x, \n", (ADDRINT)mbi.BaseAddress, regionend);
 			tdata->memArrayExit.Array[regions].EndAddress = regionend;
 			tdata->memArrayExit.Array[regions].StartAddress = (ADDRINT)mbi.BaseAddress;
 			tdata->memArrayExit.Array[regions].RegionID = regions;
@@ -452,8 +451,9 @@ VOID addKuserData(pintool_tls* tdata) {
 			tdata->memArrayExit.Array[regions].AllProtect = mbi.AllocationProtect;
 		}
 		size += mbi.RegionSize;
-		MyAddress += mbi.RegionSize;
-	tdata->memArrayExit.regionsSum = regions - 1;
+	tdata->memArrayExit.regionsSum = regions;
+	printf("Kuserdata.EndAddress: 0x%x , Kuserdata.StartAddress: 0x%x \n", tdata->memArrayExit.Array[regions].EndAddress, tdata->memArrayExit.Array[regions].StartAddress);
+
 }
 
 //enumerate syscalls' ordinals
@@ -548,7 +548,6 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 	ADDRINT ra = *((ADDRINT*)ESP + 1);
 	itreenode_t* node = itree_search(itree, ra);
 	int isNodeNull = (node == NULL);
-	
 	fillArg(ctx, std, tdata->sc.syscall_number);
 
 	if (isNodeNull) {
@@ -574,13 +573,13 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 		}
 	}
 	else {
-		printf("------------------------------- \n");
+		//printf("------------------------------- \n");
 		if (tdata->sc.syscall_number < 0x200) {
 			printf("****************Syscall name: %s ****************\n", syscallIDs[tdata->sc.syscall_number]);
 		}
 		printf("address found in node \n");
 		printf("Syscall originated in %s  ESP=0x%x RA==0x%x \n", node->data, *ESP, ra);
-		printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
+		//printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
 		tdata->counter1++;
 		return;
 	}
@@ -588,6 +587,8 @@ VOID HOOKS_SyscallEntry(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) 
 }
 
 VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
+	fflush(stdout);
+
 	//retrive thread data
 	pintool_tls* tdata;
 	tdata = (pintool_tls*)PIN_GetThreadData(tls_key, thread_id);	
@@ -598,49 +599,46 @@ VOID HOOKS_SyscallExit(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std) {
 	//search stack pointer in interval tree ranges
 	ADDRINT ra = *((ADDRINT*)ESP + 1);
 	//search stack pointer in interval tree ranges
-	itreenode_t* node = itree_search(itree, *ESP);
-
+	itreenode_t* node = itree_search(itree, ra);
+	printf("EXIT ra: 0x%x 0x%x 0x%x \n", ra, *ESP, *RIP);
 	printf("arg1: 0x%x, arg2: 0x%x, arg3: 0x%x \n", arg1, arg2, arg3);
 
 	int isNodeNull = (node == NULL); 
 	if (isNodeNull) {//if the stackpointer is found
+		printf("EXIT node NOT found in tree\n");
+
 		if (tdata->sc.syscall_number == 0x003c) { //check if it is ntcontinue
 			printf("ntcontinue \n");
 			int check;
-			itreenode_t* node2 = itree_search(itree, *RIP);
+			itreenode_t* node2 = itree_search(itree, ra);
 			check = (node2 == NULL);
 			if (check) {
-				printf("node NOT found using RIP \n");
+				printf("node NOT found using ra: 0x%x 0x%x 0x%x \n",ra, *ESP, *RIP);
 			}
 			else {
-				printf("node found using RIP \n");
+				printf("node found using ra: 0x%x 0x%x 0x%x \n", ra, *ESP, *RIP);
 			}
 			return;
 		}
-		printf("EXIT node NOT found in tree\n");
 
 		if (tdata->sc.syscall_number > 0x200) {// if syscall is not NTdll
 			tdata->counter2++;
-			printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
+			//printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
 			return;
 		}
-		else {
-			printf("in else prima di changed \n");
-			tdata->memArrayExit.syscalNumb = tdata->sc.syscall_number;
-			tdata->memArrayExit.syscallID = tdata->counter2;
-			funcExit(tdata);
-			changed(tdata);
-			tdata->counter2++;
-			printf("fefiffooooo \n");
-			addKuserData(tdata);
-			printf("tdata->memArrayEntry.regionsSum :%d , tdata->memArrayExit.regionsSum:%d \n", tdata->memArrayEntry.regionsSum, tdata->memArrayExit.regionsSum);
-			printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
-		}
+		tdata->memArrayExit.syscalNumb = tdata->sc.syscall_number;
+		tdata->memArrayExit.syscallID = tdata->counter2;
+		funcExit(tdata);
+		changed(tdata);
+		tdata->counter2++;
+		addKuserData(tdata);
+		//printf("tdata->memArrayEntry.regionsSum :%d , tdata->memArrayExit.regionsSum:%d \n", tdata->memArrayEntry.regionsSum, tdata->memArrayExit.regionsSum);
+		//printf("Syscounter1:%d, Syscounter2: %d id:%x\n", tdata->counter1, tdata->counter2, tdata->sc.syscall_number);
 	}
 	else {
 		printf("address found in node returning\n");
 		printf("Syscall originated in %s  ESP=0x%x RA==0x%x \n", node->data, *ESP, ra);
-		printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
+	//	printf("node min: 0x%x node max: 0x%x left:%d right:%d \n", node->start_addr, node->end_addr, node->left, node->right);
 		tdata->counter2++;
 		return;
 	}
